@@ -1,0 +1,11 @@
+# configs/config.yaml
+defaults:
+  - model: whisper_base    
+  - dataset: test_dataset    
+  - _self_
+
+training:
+  epochs: 3
+  batch_size: 4
+  learning_rate: 1e-4
+  seed: 42
