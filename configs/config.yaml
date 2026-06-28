@@ -1,7 +1,7 @@
 # configs/config.yaml
 defaults:
   - model: whisper_base    
-  - dataset: test_dataset    
+  - data: test_create_function    
   - _self_
 
 training:

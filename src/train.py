@@ -21,9 +21,17 @@ def main(cfg):
     model = instantiate(cfg.model)
 
     # Creating Dataset and Dataloader
+    if not cfg.get("data"):
+        raise ValueError("Missing 'data' configutation block in your YAML")
+    
     print("\n------- Instantiating Dataset and Dataloader from Configuration -------")
-    print(f"{cfg.dataset}\n")
-    dataset = instantiate(cfg.dataset)
+    print(f"{cfg.data}\n")
+    data = instantiate(cfg.data)
+    print(data)
+
+    
+
+
 
 
 if __name__ == "__main__":

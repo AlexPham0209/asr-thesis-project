@@ -1,0 +1,9 @@
+_target_: torch.utils.data.DataLoader
+batch_size: 64
+shuffle: true
+pin_memory: true
+num_workers: 2
+dataset:
+  _target_: data.test_dataset.TestDataset
+  data_path: "data/my_custom_dataset.pkl"
+  transform_type: "augment"
