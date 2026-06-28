@@ -1,6 +1,0 @@
-[2026-06-27 21:07:25,158][httpx][INFO] - HTTP Request: HEAD https://huggingface.co/openai/whisper-base/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-[2026-06-27 21:07:25,158][huggingface_hub.utils._http][WARNING] - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-[2026-06-27 21:07:25,179][httpx][INFO] - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-base/e37978b90ca9030d5170a5c07aadb050351a65bb/config.json "HTTP/1.1 200 OK"
-[2026-06-27 21:07:25,219][httpx][INFO] - HTTP Request: HEAD https://huggingface.co/openai/whisper-base/resolve/main/model.safetensors "HTTP/1.1 302 Found"
-[2026-06-27 21:07:25,489][httpx][INFO] - HTTP Request: HEAD https://huggingface.co/openai/whisper-base/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
-[2026-06-27 21:07:25,518][httpx][INFO] - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-base/e37978b90ca9030d5170a5c07aadb050351a65bb/generation_config.json "HTTP/1.1 200 OK"

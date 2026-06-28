@@ -1,8 +1,0 @@
-model:
-  _target_: models.whisper.Whisper
-  model_id: openai/whisper-tiny
-training:
-  epochs: 3
-  batch_size: 4
-  learning_rate: 0.0001
-  seed: 42
