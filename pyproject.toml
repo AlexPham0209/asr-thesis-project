@@ -5,10 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "datasets>=5.0.0",
+    "datasets[audio]>=5.0.0",
+    "evaluate>=0.4.6",
     "hydra-core>=1.3.3",
+    "jiwer>=4.0.0",
     "ruff>=0.15.20",
     "torch>=2.11.0",
+    "torchcodec>=0.14.0",
     "torchvision>=0.26.0",
     "transformers>=5.12.1",
 ]
@@ -17,6 +20,7 @@ dependencies = [
 torch = { index = "pytorch-cu126" }
 torchvision = { index = "pytorch-cu126" }
 torchaudio = { index = "pytorch-cu126" }
+torchcodec = { index = "pytorch-cu126" }
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

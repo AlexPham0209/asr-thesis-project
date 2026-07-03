@@ -1,7 +1,8 @@
-# configs/config.yaml
+# @package _global_
+
 defaults:
-  - model: whisper_base    
-  - data: test_create_function    
+  - model: whisper_tiny   
+  - dataset: librispeech    
   - _self_
 
 training:

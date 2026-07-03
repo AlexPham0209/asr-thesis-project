@@ -1,0 +1,14 @@
+# @package _global_
+
+# Loading raw dataset using HuggingFace's dataset library
+dataset:
+  _target_: datasets.load_dataset
+  path: "openslr/librispeech_asr"   
+  name: "all"  
+  streaming: true
+
+
+# Keep ASR feature column names associated with the dataset config
+preprocess:
+  _target_: data.preprocess.preprocess_librispeech
+  _partial_: true

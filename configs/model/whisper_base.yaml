@@ -1,2 +1,0 @@
-_target_: models.whisper.Whisper
-model_id: "openai/whisper-tiny"

@@ -1,0 +1,12 @@
+# @package _global_
+model:
+  _target_: transformers.AutoModelForCTC.from_pretrained
+  pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
+
+  # You can add model-specific keyword arguments here
+  ctc_loss_reduction: "mean"
+
+# Keep processor configuration alongside the model
+processor:
+  _target_: transformers.AutoProcessor.from_pretrained
+  pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
