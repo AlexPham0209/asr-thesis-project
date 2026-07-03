@@ -1,4 +1,6 @@
 # @package _global_
+architecture: ctc
+
 model:
   _target_: models.custom_ctc_model.CustomCTCModel
   input_dim: 80
@@ -8,3 +10,5 @@ model:
 processor:
   _target_: transformers.AutoProcessor.from_pretrained
   pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
+
+

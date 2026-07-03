@@ -8,22 +8,18 @@ def preprocess_librispeech(dataset, processor):
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         audio = batch["audio"]
-        audio_arrays = [sample["array"] for sample in audio]
 
         # Process the audio to generate 'input_features' or 'input_values'
-        inputs = processor(
-            audio=audio_arrays, 
-            sampling_rate=target_sampling_rate, 
+        batch = processor(
+            audio=audio["array"],
+            sampling_rate=target_sampling_rate,
             text=batch["text"],
-            max_length=10000,
-            truncation=True
         )
-        
+
         # Hugging Face models expect text targets to be named 'labels'
-        inputs["labels"] = inputs["labels"]
-        inputs["input_length"] = len(audio["array"]) / audio["sampling_rate"]
-        
-        return inputs
-    
+        batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
+
+        return batch
+
     # Map the preprocessing function across the entire dataset in batches
     return dataset.map(preprocess, remove_columns=dataset.column_names)
