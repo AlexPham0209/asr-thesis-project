@@ -20,5 +20,5 @@ dataset:
     split: "test.clean"
 
 preprocess:
-  _target_: data.preprocess.preprocess_librispeech
+  _target_: data.preprocess.preprocess_audio
   _partial_: true

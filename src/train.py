@@ -1,3 +1,5 @@
+import logging
+
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -15,7 +17,10 @@ import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
 
-from data.data_collator import DataCollatorCTCWithPadding, DataCollatorSpeechSeq2SeqWithPadding
+from data.data_collator import (
+    DataCollatorCTCWithPadding,
+    DataCollatorSpeechSeq2SeqWithPadding,
+)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -64,7 +69,6 @@ def create_seq2seq_trainer(
 def create_ctc_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator
 ):
-    print(cfg.training)
     training_args = TrainingArguments(**cfg.training)
 
     # 6. Initialize the Trainer
@@ -80,7 +84,10 @@ def create_ctc_trainer(
 
     return trainer
 
-def create_custom_trainer(cfg, model, processor, train, test, compute_metrics, data_collator):
+
+def create_custom_trainer(
+    cfg, model, processor, train, test, compute_metrics, data_collator
+):
     pass
 
 
@@ -133,7 +140,7 @@ def main(cfg: DictConfig):
             train=train,
             valid=valid,
             compute_metrics=compute_metrics,
-            data_collator=DataCollatorCTCWithPadding(processor=processor)
+            data_collator=DataCollatorCTCWithPadding(processor=processor),
         )
         if architecture == "ctc"
         else create_seq2seq_trainer(
@@ -143,13 +150,11 @@ def main(cfg: DictConfig):
             train=train,
             valid=valid,
             compute_metrics=compute_metrics,
-            data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+            data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
         )
     )
 
-    print(trainer)
-
-    # trainer.train()
+    trainer.train()
 
 
 if __name__ == "__main__":
