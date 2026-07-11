@@ -89,21 +89,19 @@ def inference(model, processor, dataset, architecture):
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
-        # 1. Ensure tensor type and add batch dimension [1, ...]
+        # Ensure tensor type 
         if not isinstance(input_features, torch.Tensor):
             input_features = torch.tensor(input_features)
 
-        # Move inputs to the correct device
+        # Move inputs to the correct device and add a batch dimension
         input_features = input_features.unsqueeze(dim=0).to(device)
 
         start_time = time.perf_counter()
         with torch.no_grad():
-            # 2. Differentiate between CTC (forward pass) and Encoder-Decoder (generate)
             if architecture == "ctc":
                 logits = model(input_features).logits
                 predicted_ids = torch.argmax(logits, dim=-1)
             else:
-                # For Whisper / Seq2Seq models
                 predicted_ids = model.generate(input_features)
 
         end_time = time.perf_counter()
@@ -115,7 +113,7 @@ def inference(model, processor, dataset, architecture):
             label_ids = torch.tensor(label_ids)
         
         label_ids = label_ids.unsqueeze(0)
-        
+
         # Decoding prediction and labels
         pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
         label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
@@ -152,7 +150,7 @@ def main(cfg: DictConfig):
         datefmt="%m/%d/%Y %H:%M:%S",
     )
 
-    # Add File Writer
+    # Adding File Writer
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     log_file_path = os.path.join(logging_path, timestamp)
@@ -161,18 +159,17 @@ def main(cfg: DictConfig):
     )  # Use mode="a" to append
     file_handler.setFormatter(file_formatter)
 
-    # Add Screen Writer
+    # Adding Screen Writer
     screen_handler = logging.StreamHandler(
         stream=sys.stdout
-    )  # stream=sys.stdout is similar to normal print
+    ) 
     screen_handler.setFormatter(file_formatter)
 
-    # 3. Fetch the Hugging Face root logger and attach the file handler
+    # Fetching the Hugging Face root logger and attaching the file and screen handler
     hf_logger = hf_logging.get_logger("transformers")
     hf_logger.addHandler(file_handler)
     hf_logger.addHandler(screen_handler)
 
-    # 4. Optional: Set your preferred verbosity level (e.g., INFO or DEBUG)
     hf_logging.set_verbosity_info()
 
     if not cfg.get("model"):
@@ -188,6 +185,7 @@ def main(cfg: DictConfig):
     print(f"{cfg.processor}\n")
 
     print("------- Instantiating Model from Configuration -------")
+    architecture = cfg.architecture
     processor = hydra.utils.instantiate(cfg.processor)
     model = hydra.utils.instantiate(cfg.model).to(device)
 
@@ -195,13 +193,14 @@ def main(cfg: DictConfig):
     if not cfg.get("dataset"):
         raise ValueError("Missing 'data' configutation block in your YAML")
 
+    
     # Loading in dataset
     datasets = hydra.utils.instantiate(cfg.dataset)
     train, valid, test = datasets.train, datasets.validation, datasets.test
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
-    preprocess_fn = hydra.utils.instantiate(cfg.preprocess, processor=processor)
+    preprocess_fn = hydra.utils.instantiate(cfg.preprocess, processor=processor, architecture=architecture)
     train = preprocess_fn(train)
     valid = preprocess_fn(valid)
     test = preprocess_fn(test)
@@ -210,7 +209,6 @@ def main(cfg: DictConfig):
     compute_metrics = create_metric(processor=processor)
 
     # Creating trainer
-    architecture = cfg.architecture
     inference(model, processor, test, architecture)
 
     trainer = (

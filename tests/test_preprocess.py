@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 from transformers import AutoProcessor
 from datasets import Dataset, IterableDataset
-from src.data.preprocess import preprocess_wav2vec2, preprocess_whisper
+from src.data.preprocess import preprocess
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +50,7 @@ def test_whisper_processor_audio_output(whisper, sample_audio):
     }
 
     dataset = IterableDataset.from_list([sample])
-    dataset = preprocess_whisper(dataset, whisper)
+    dataset = preprocess(dataset, whisper, "seq2seq")
 
     result = next(iter(dataset))
 
@@ -78,7 +78,7 @@ def test_wav2vec2_processor_audio_output(wav2vec2, sample_audio):
     }
 
     dataset = IterableDataset.from_list([sample])
-    dataset = preprocess_wav2vec2(dataset, wav2vec2)
+    dataset = preprocess(dataset, wav2vec2, "ctc")
 
     result = next(iter(dataset))
 
@@ -105,7 +105,7 @@ def test_processor_resampling(whisper):
     }
 
     dataset = Dataset.from_list([sample])
-    dataset = preprocess_whisper(dataset, whisper)
+    dataset = preprocess(dataset, whisper, "seq2seq")
 
     result = next(iter(dataset))
 

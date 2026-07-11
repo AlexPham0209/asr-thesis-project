@@ -20,5 +20,5 @@ dataset:
     split: "test.clean"
 
 preprocess:
-  _target_: data.preprocess.preprocess_wav2vec2
+  _target_: data.preprocess.preprocess
   _partial_: true
