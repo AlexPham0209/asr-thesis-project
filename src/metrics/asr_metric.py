@@ -5,6 +5,7 @@ import numpy as np
 wer = evaluate.load("wer")
 cer = evaluate.load("cer")
 
+
 # Curried function for evaluating metrics
 def create_metric(processor):
     def compute_metrics(pred):

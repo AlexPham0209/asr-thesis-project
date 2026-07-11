@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - model: whisper_tiny   
+  - model: wav2vec2   
   - dataset: librispeech    
   - _self_
 

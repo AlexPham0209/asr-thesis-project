@@ -2,7 +2,10 @@ import pytest
 import torch
 from transformers import AutoProcessor
 
-from src.data.data_collator import DataCollatorCTCWithPadding, DataCollatorSpeechSeq2SeqWithPadding
+from src.data.data_collator import (
+    DataCollatorCTCWithPadding,
+    DataCollatorSpeechSeq2SeqWithPadding,
+)
 
 
 @pytest.fixture(scope="module")
@@ -35,22 +38,24 @@ def test_ctc_collate(wav2vec2):
 
     pad_token = wav2vec2.tokenizer.pad_token_id
     input_values = collated["input_values"]
-    correct_values = torch.tensor([
-        [1, 2, 3, 4, pad_token, pad_token, pad_token], 
-        [1, 2, 3, 4, 5, 6, 7]
-    ])
+    correct_values = torch.tensor(
+        [[1, 2, 3, 4, pad_token, pad_token, pad_token], [1, 2, 3, 4, 5, 6, 7]]
+    )
 
     labels = collated["labels"]
-    correct_labels = torch.tensor([
-        [1, 4, 5, 6],
-        [1, 2, -100, -100],
-    ])
+    correct_labels = torch.tensor(
+        [
+            [1, 4, 5, 6],
+            [1, 2, -100, -100],
+        ]
+    )
 
     assert input_values.shape == (2, 7)
     assert torch.all(torch.eq(input_values, correct_values))
 
     assert labels.shape == (2, 4)
     assert torch.all(torch.eq(labels, correct_labels))
+
 
 def test_seq2seq_collate(whisper):
     collator = DataCollatorSpeechSeq2SeqWithPadding(whisper)
@@ -74,16 +79,20 @@ def test_seq2seq_collate(whisper):
 
     pad_token = whisper.tokenizer.pad_token_id
     input_values = collated["input_features"]
-    correct_values = torch.tensor([
-        [[1, 2, 3, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0]], 
-        [[1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6, 7]]
-    ])
+    correct_values = torch.tensor(
+        [
+            [[1, 2, 3, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0]],
+            [[1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6, 7]],
+        ]
+    )
 
     labels = collated["labels"]
-    correct_labels = torch.tensor([
-        [1, 4, 5, 6],
-        [1, 2, -100, -100],
-    ])
+    correct_labels = torch.tensor(
+        [
+            [1, 4, 5, 6],
+            [1, 2, -100, -100],
+        ]
+    )
 
     assert input_values.shape == (2, 2, 7)
     assert torch.all(torch.eq(input_values, correct_values))

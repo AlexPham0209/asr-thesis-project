@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 import os
 import sys
-import time 
+import time
 
 import evaluate
 import hydra
@@ -27,7 +27,7 @@ from data.data_collator import (
     DataCollatorSpeechSeq2SeqWithPadding,
 )
 
-import logging 
+import logging
 from transformers.utils import logging as hf_logging
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -85,18 +85,16 @@ def inference(model, processor, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset:
+    for sample in dataset.take(20):
         key = "input_values" if architecture == "ctc" else "input_features"
-        input_features = sample[key] 
-        
+        input_features = sample[key]
+
         # 1. Ensure tensor type and add batch dimension [1, ...]
         if not isinstance(input_features, torch.Tensor):
             input_features = torch.tensor(input_features)
-        if input_features.ndim == 1:
-            input_features = input_features.unsqueeze(0)
-            
+
         # Move inputs to the correct device
-        input_features = input_features.to(device)
+        input_features = input_features.unsqueeze(dim=0).to(device)
 
         start_time = time.perf_counter()
         with torch.no_grad():
@@ -107,18 +105,29 @@ def inference(model, processor, dataset, architecture):
             else:
                 # For Whisper / Seq2Seq models
                 predicted_ids = model.generate(input_features)
-        
+
         end_time = time.perf_counter()
 
+        # Ensure tensor type and add batch dimension for the labels
         label_ids = sample["labels"]
 
+        if not isinstance(label_ids, torch.Tensor):
+            label_ids = torch.tensor(label_ids)
+        
+        label_ids = label_ids.unsqueeze(0)
+        
+        # Decoding prediction and labels
         pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
         label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
 
         audio_duration = sample["input_length"]
         processing_time = end_time - start_time
         rtfx = audio_duration / processing_time
-        
+
+        print(pred_str)
+        print(label_str)
+        print()
+
         predictions.extend(pred_str)
         labels.extend(label_str)
         rtfxs.append(rtfx)
@@ -128,7 +137,6 @@ def inference(model, processor, dataset, architecture):
     average_rtfx = torch.tensor(rtfxs).mean(dim=-1)
 
     return wer_score, cer_score, average_rtfx
-
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -141,18 +149,22 @@ def main(cfg: DictConfig):
     # Adding logging information
     file_formatter = logging.Formatter(
         fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S"
+        datefmt="%m/%d/%Y %H:%M:%S",
     )
-    
+
     # Add File Writer
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     log_file_path = os.path.join(logging_path, timestamp)
-    file_handler = logging.FileHandler(log_file_path, mode="w") # Use mode="a" to append
+    file_handler = logging.FileHandler(
+        log_file_path, mode="w"
+    )  # Use mode="a" to append
     file_handler.setFormatter(file_formatter)
 
     # Add Screen Writer
-    screen_handler = logging.StreamHandler(stream=sys.stdout) #stream=sys.stdout is similar to normal print
+    screen_handler = logging.StreamHandler(
+        stream=sys.stdout
+    )  # stream=sys.stdout is similar to normal print
     screen_handler.setFormatter(file_formatter)
 
     # 3. Fetch the Hugging Face root logger and attach the file handler
@@ -199,6 +211,8 @@ def main(cfg: DictConfig):
 
     # Creating trainer
     architecture = cfg.architecture
+    inference(model, processor, test, architecture)
+
     trainer = (
         create_ctc_trainer(
             cfg=cfg,

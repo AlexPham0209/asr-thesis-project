@@ -2,8 +2,9 @@ import torch
 import pytest
 import numpy as np
 from transformers import AutoProcessor
-from datasets import Dataset
+from datasets import Dataset, IterableDataset
 from src.data.preprocess import preprocess_wav2vec2, preprocess_whisper
+
 
 @pytest.fixture(scope="module")
 def wav2vec2():
@@ -14,7 +15,9 @@ def wav2vec2():
 @pytest.fixture(scope="module")
 def whisper():
     # Using a micro-sized configuration/model specifically meant for testing
-    return AutoProcessor.from_pretrained("hf-internal-testing/tiny-random-WhisperForConditionalGeneration")
+    return AutoProcessor.from_pretrained(
+        "openai/whisper-tiny"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -30,9 +33,11 @@ def test_whisper_loading(whisper):
     """Test that the processor loads correctly."""
     assert whisper is not None
 
+
 def test_wav2vec2_loading(wav2vec2):
     """Test that the processor loads correctly."""
     assert wav2vec2 is not None
+
 
 def test_whisper_processor_audio_output(whisper, sample_audio):
     """Test processing raw audio into model inputs."""
@@ -44,7 +49,7 @@ def test_whisper_processor_audio_output(whisper, sample_audio):
         "text": "HELLO THERE HOW ARE YOU",
     }
 
-    dataset = Dataset.from_list([sample])
+    dataset = IterableDataset.from_list([sample])
     dataset = preprocess_whisper(dataset, whisper)
 
     result = next(iter(dataset))
@@ -52,10 +57,12 @@ def test_whisper_processor_audio_output(whisper, sample_audio):
     assert list(result.keys()) == ["input_features", "labels", "input_length"], (
         "Incorrect keys"
     )
-    assert result["input_features"].shape == (1, 80, 3000)
+    assert result["input_features"].shape == (80, 3000)
     assert result["input_length"] == 1.0
     assert (
-        whisper.decode(result["labels"], skip_special_tokens=True)
+        whisper.tokenizer.decode(
+            result["labels"], skip_special_tokens=True, decode_with_timestamps=True
+        )
         == "HELLO THERE HOW ARE YOU"
     )
 
@@ -70,7 +77,7 @@ def test_wav2vec2_processor_audio_output(wav2vec2, sample_audio):
         "text": "HELLO THERE HOW ARE YOU",
     }
 
-    dataset = Dataset.from_list([sample])
+    dataset = IterableDataset.from_list([sample])
     dataset = preprocess_wav2vec2(dataset, wav2vec2)
 
     result = next(iter(dataset))
@@ -78,7 +85,8 @@ def test_wav2vec2_processor_audio_output(wav2vec2, sample_audio):
     assert list(result.keys()) == ["input_values", "labels", "input_length"], (
         "Incorrect keys"
     )
-    assert result["input_values"].shape == (1, sampling_rate)
+    assert result["input_values"].ndim == 1
+    assert result["input_values"].shape[0] == sampling_rate
     assert result["input_length"] == 1.0
 
     # Repeating tokens get merge
