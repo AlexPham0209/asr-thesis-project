@@ -10,3 +10,5 @@ training:
   save_strategy: epoch
   num_train_epochs: 10
   max_steps: 1000
+
+logging_path: logs

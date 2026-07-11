@@ -1,4 +1,8 @@
+from datetime import datetime
 import logging
+import os
+import sys
+import time 
 
 import evaluate
 import hydra
@@ -16,36 +20,17 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
+from metrics.asr_metric import create_metric
 
 from data.data_collator import (
     DataCollatorCTCWithPadding,
     DataCollatorSpeechSeq2SeqWithPadding,
 )
 
+import logging 
+from transformers.utils import logging as hf_logging
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Metrics
-wer = evaluate.load("wer")
-cer = evaluate.load("cer")
-
-
-# Curried function for evaluating metrics
-def create_metric(processor):
-    def compute_metrics(pred):
-        pred_logits = pred.predictions
-        pred_ids = np.argmax(pred_logits, axis=-1)
-
-        pred.label_ids[pred.label_ids == -100] = processor.tokenizer.pad_token_id
-
-        pred_str = processor.batch_decode(pred_ids)
-        label_str = processor.batch_decode(pred.label_ids, group_tokens=False)
-
-        wer_score = wer.compute(predictions=pred_str, references=label_str)
-        cer_score = cer.compute(predictions=pred_str, references=label_str)
-
-        return {"wer": wer_score, "cer": cer_score}
-
-    return compute_metrics
 
 
 def create_seq2seq_trainer(
@@ -86,15 +71,97 @@ def create_ctc_trainer(
 
 
 def create_custom_trainer(
-    cfg, model, processor, train, test, compute_metrics, data_collator
+    cfg, model, processor, train, valid, compute_metrics, data_collator
 ):
     pass
+
+
+def inference(model, processor, dataset, architecture):
+    # Metrics
+    wer = evaluate.load("wer")
+    cer = evaluate.load("cer")
+
+    predictions = []
+    labels = []
+    rtfxs = []
+
+    for sample in dataset:
+        key = "input_values" if architecture == "ctc" else "input_features"
+        input_features = sample[key] 
+        
+        # 1. Ensure tensor type and add batch dimension [1, ...]
+        if not isinstance(input_features, torch.Tensor):
+            input_features = torch.tensor(input_features)
+        if input_features.ndim == 1:
+            input_features = input_features.unsqueeze(0)
+            
+        # Move inputs to the correct device
+        input_features = input_features.to(device)
+
+        start_time = time.perf_counter()
+        with torch.no_grad():
+            # 2. Differentiate between CTC (forward pass) and Encoder-Decoder (generate)
+            if architecture == "ctc":
+                logits = model(input_features).logits
+                predicted_ids = torch.argmax(logits, dim=-1)
+            else:
+                # For Whisper / Seq2Seq models
+                predicted_ids = model.generate(input_features)
+        
+        end_time = time.perf_counter()
+
+        label_ids = sample["labels"]
+
+        pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+        label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
+
+        audio_duration = sample["input_length"]
+        processing_time = end_time - start_time
+        rtfx = audio_duration / processing_time
+        
+        predictions.extend(pred_str)
+        labels.extend(label_str)
+        rtfxs.append(rtfx)
+
+    wer_score = wer.compute(predictions=predictions, references=labels)
+    cer_score = cer.compute(predictions=predictions, references=labels)
+    average_rtfx = torch.tensor(rtfxs).mean(dim=-1)
+
+    return wer_score, cer_score, average_rtfx
+
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
     print("------- Running Experiment Configuration -------")
     print(OmegaConf.to_yaml(cfg))
+
+    logging_path = cfg.logging_path
+
+    # Adding logging information
+    file_formatter = logging.Formatter(
+        fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S"
+    )
+    
+    # Add File Writer
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+    log_file_path = os.path.join(logging_path, timestamp)
+    file_handler = logging.FileHandler(log_file_path, mode="w") # Use mode="a" to append
+    file_handler.setFormatter(file_formatter)
+
+    # Add Screen Writer
+    screen_handler = logging.StreamHandler(stream=sys.stdout) #stream=sys.stdout is similar to normal print
+    screen_handler.setFormatter(file_formatter)
+
+    # 3. Fetch the Hugging Face root logger and attach the file handler
+    hf_logger = hf_logging.get_logger("transformers")
+    hf_logger.addHandler(file_handler)
+    hf_logger.addHandler(screen_handler)
+
+    # 4. Optional: Set your preferred verbosity level (e.g., INFO or DEBUG)
+    hf_logging.set_verbosity_info()
 
     if not cfg.get("model"):
         raise ValueError("Missing 'model' configutation block in your YAML")

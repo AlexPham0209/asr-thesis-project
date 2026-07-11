@@ -5,15 +5,16 @@ from transformers import AutoProcessor
 from datasets import Dataset
 from src.data.preprocess import preprocess_wav2vec2, preprocess_whisper
 
-
 @pytest.fixture(scope="module")
 def wav2vec2():
-    return AutoProcessor.from_pretrained("facebook/wav2vec2-base-960h")
+    # Using a micro-sized configuration/model specifically meant for testing
+    return AutoProcessor.from_pretrained("hf-internal-testing/tiny-random-wav2vec2")
 
 
 @pytest.fixture(scope="module")
 def whisper():
-    return AutoProcessor.from_pretrained("openai/whisper-tiny")
+    # Using a micro-sized configuration/model specifically meant for testing
+    return AutoProcessor.from_pretrained("hf-internal-testing/tiny-random-WhisperForConditionalGeneration")
 
 
 @pytest.fixture(scope="module")
