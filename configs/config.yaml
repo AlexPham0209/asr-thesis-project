@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - model: wav2vec2   
+  - model: whisper_tiny   
   - dataset: librispeech    
   - _self_
 
@@ -11,4 +11,6 @@ training:
   num_train_epochs: 10
   max_steps: 1000
 
-logging_path: logs
+logging_directory: logs
+model_directory: models
+results_directory: results

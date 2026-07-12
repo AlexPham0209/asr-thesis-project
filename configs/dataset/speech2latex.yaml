@@ -1,0 +1,20 @@
+# @package _global_
+
+_dataset_base: &base_config
+  _target_: datasets.load_dataset
+  path: "marsianin500/Speech2Latex"   
+  name: "all"  
+  streaming: true
+
+dataset:
+  train:
+    <<: *base_config
+    split: "sentences_train"
+
+  test:
+    <<: *base_config
+    split: "sentences_test"
+
+preprocess:
+  _target_: data.preprocess.preprocess_speech2latex
+  _partial_: true

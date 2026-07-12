@@ -85,7 +85,7 @@ def inference(model, processor, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset.take(20):
+    for sample in dataset:
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -122,10 +122,6 @@ def inference(model, processor, dataset, architecture):
         processing_time = end_time - start_time
         rtfx = audio_duration / processing_time
 
-        print(pred_str)
-        print(label_str)
-        print()
-
         predictions.extend(pred_str)
         labels.extend(label_str)
         rtfxs.append(rtfx)
@@ -142,7 +138,7 @@ def main(cfg: DictConfig):
     print("------- Running Experiment Configuration -------")
     print(OmegaConf.to_yaml(cfg))
 
-    logging_path = cfg.logging_path
+    logging_directory = cfg.logging_directory
 
     # Adding logging information
     file_formatter = logging.Formatter(
@@ -153,7 +149,7 @@ def main(cfg: DictConfig):
     # Adding File Writer
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-    log_file_path = os.path.join(logging_path, timestamp)
+    log_file_path = os.path.join(logging_directory, f"hf_{timestamp}")
     file_handler = logging.FileHandler(
         log_file_path, mode="w"
     )  # Use mode="a" to append
@@ -165,12 +161,13 @@ def main(cfg: DictConfig):
     ) 
     screen_handler.setFormatter(file_formatter)
 
-    # Fetching the Hugging Face root logger and attaching the file and screen handler
+    # Fetching the Hugging Face logger and attaching the file and screen handler
     hf_logger = hf_logging.get_logger("transformers")
     hf_logger.addHandler(file_handler)
     hf_logger.addHandler(screen_handler)
-
+    
     hf_logging.set_verbosity_info()
+    
 
     if not cfg.get("model"):
         raise ValueError("Missing 'model' configutation block in your YAML")
@@ -209,8 +206,6 @@ def main(cfg: DictConfig):
     compute_metrics = create_metric(processor=processor)
 
     # Creating trainer
-    inference(model, processor, test, architecture)
-
     trainer = (
         create_ctc_trainer(
             cfg=cfg,
@@ -233,7 +228,24 @@ def main(cfg: DictConfig):
         )
     )
 
-    trainer.train()
+    # Calculating previous WER scores
+    wer_score, cer_score, average_rtfx = inference(model, processor, test, architecture)
+
+    # Training and logging metrics
+    train_results = trainer.train()
+    trainer.log_metrics("train", train_results.metrics)
+    trainer.save_metrics("train", train_results.metrics)
+
+    # Evaluate using the validation dataset
+    valid_metrics = trainer.evaluate()
+    trainer.log_metrics("eval", valid_metrics)
+    trainer.save_metrics("eval", valid_metrics)
+
+    # Saving model
+    model_directory = cfg.model_directory
+    trainer.save_model(os.path.join(model_directory, timestamp))
+
+    wer_score, cer_score, average_rtfx = inference(model, processor, test, architecture)
 
 
 if __name__ == "__main__":
