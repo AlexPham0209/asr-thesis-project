@@ -30,6 +30,7 @@ from data.data_collator import (
 import logging
 from transformers.utils import logging as hf_logging
 
+logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -85,7 +86,7 @@ def inference(model, processor, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset:
+    for sample in dataset.take(10):
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -135,53 +136,64 @@ def inference(model, processor, dataset, architecture):
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
-    print("------- Running Experiment Configuration -------")
-    print(OmegaConf.to_yaml(cfg))
-
     logging_directory = cfg.logging_directory
-
-    # Adding logging information
+    os.makedirs(logging_directory, exist_ok=True)
+    
+    # Common log formatter
     file_formatter = logging.Formatter(
         fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
     )
 
-    # Adding File Writer
+    # Creating subfolder for current training run
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-    log_file_path = os.path.join(logging_directory, f"hf_{timestamp}")
-    file_handler = logging.FileHandler(
-        log_file_path, mode="w"
-    )  # Use mode="a" to append
-    file_handler.setFormatter(file_formatter)
+    run_directory = os.path.join(logging_directory, timestamp)
+    os.makedirs(run_directory, exist_ok=True)
 
-    # Adding Screen Writer
-    screen_handler = logging.StreamHandler(
-        stream=sys.stdout
-    ) 
+    # Screen/Console Handler (Attached to root so everything prints to stdout)
+    screen_handler = logging.StreamHandler(stream=sys.stdout) 
     screen_handler.setFormatter(file_formatter)
 
-    # Fetching the Hugging Face logger and attaching the file and screen handler
-    hf_logger = hf_logging.get_logger("transformers")
-    hf_logger.addHandler(file_handler)
-    hf_logger.addHandler(screen_handler)
+    # Root Logger Setup (Captures everything)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(screen_handler)
+    
+    root_file_handler = logging.FileHandler(os.path.join(run_directory, "all.log"), mode="w")
+    root_file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(root_file_handler)
+
+    # Application Logger Setup (Isolates your app's code logs via "finetuning")
+    app_logger = logging.getLogger("finetuning")
+    app_file_handler = logging.FileHandler(os.path.join(run_directory, "app.log"), mode="w")
+    app_file_handler.setFormatter(file_formatter)
+    app_logger.addHandler(app_file_handler)
+
+    # Hugging Face Logger Setup (Isolates Hugging Face transformers logs)
+    hf_logger_instance = hf_logging.get_logger("transformers")
+    hf_file_handler = logging.FileHandler(os.path.join(run_directory, "hf.log"), mode="w")
+    hf_file_handler.setFormatter(file_formatter)
+    hf_logger_instance.addHandler(hf_file_handler)
     
     hf_logging.set_verbosity_info()
     
+    logger.info("------- Running Experiment Configuration -------")
+    logger.info(OmegaConf.to_yaml(cfg))
 
     if not cfg.get("model"):
         raise ValueError("Missing 'model' configutation block in your YAML")
 
     # Instantiating model and processor (Can either be a pretrained model or customly trained model)
-    print("------- Model Configurations -------")
-    print(f"{cfg.model}\n")
+    logger.info("------- Model Configurations -------")
+    logger.info(f"{cfg.model}\n")
 
     if not cfg.get("processor"):
         raise ValueError("Missing 'model' configuration block in your YAML")
 
     print(f"{cfg.processor}\n")
 
-    print("------- Instantiating Model from Configuration -------")
+    logger.info("------- Instantiating Model from Configuration -------")
     architecture = cfg.architecture
     processor = hydra.utils.instantiate(cfg.processor)
     model = hydra.utils.instantiate(cfg.model).to(device)
@@ -190,7 +202,6 @@ def main(cfg: DictConfig):
     if not cfg.get("dataset"):
         raise ValueError("Missing 'data' configutation block in your YAML")
 
-    
     # Loading in dataset
     datasets = hydra.utils.instantiate(cfg.dataset)
     train, valid, test = datasets.train, datasets.validation, datasets.test
@@ -229,7 +240,7 @@ def main(cfg: DictConfig):
     )
 
     # Calculating previous WER scores
-    wer_score, cer_score, average_rtfx = inference(model, processor, test, architecture)
+    pre_wer, pre_cer, pre_rtfx = inference(model, processor, test, architecture)
 
     # Training and logging metrics
     train_results = trainer.train()
@@ -245,7 +256,8 @@ def main(cfg: DictConfig):
     model_directory = cfg.model_directory
     trainer.save_model(os.path.join(model_directory, timestamp))
 
-    wer_score, cer_score, average_rtfx = inference(model, processor, test, architecture)
+    # Evaluating finetuned model on test dataset
+    post_wer, post_cer, post_rtfx = inference(model, processor, test, architecture)
 
 
 if __name__ == "__main__":
