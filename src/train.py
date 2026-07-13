@@ -20,7 +20,8 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
-from metrics.asr_metric import create_metric
+from src.utils.logger import CustomLoggingCallback
+from src.utils.metrics import create_metric
 
 from data.data_collator import (
     DataCollatorCTCWithPadding,
@@ -47,6 +48,7 @@ def create_seq2seq_trainer(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         processing_class=processor,
+        callbacks=[CustomLoggingCallback(logger)]
     )
 
     return trainer
@@ -57,7 +59,6 @@ def create_ctc_trainer(
 ):
     training_args = TrainingArguments(**cfg.training)
 
-    # 6. Initialize the Trainer
     trainer = Trainer(
         model=model,
         data_collator=data_collator,
@@ -66,6 +67,7 @@ def create_ctc_trainer(
         eval_dataset=valid,
         processing_class=processor,
         compute_metrics=compute_metrics,
+        callbacks=[CustomLoggingCallback(logger)]
     )
 
     return trainer
@@ -145,7 +147,7 @@ def main(cfg: DictConfig):
         datefmt="%m/%d/%Y %H:%M:%S",
     )
 
-    # Creating subfolder for current training run
+    # Creating subfolder for current run
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     run_directory = os.path.join(logging_directory, timestamp)
@@ -179,7 +181,6 @@ def main(cfg: DictConfig):
     hf_logging.set_verbosity_info()
     
     logger.info("------- Running Experiment Configuration -------")
-    logger.info(OmegaConf.to_yaml(cfg))
 
     if not cfg.get("model"):
         raise ValueError("Missing 'model' configutation block in your YAML")

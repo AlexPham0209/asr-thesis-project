@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 # Assuming your function is saved in a file named core_metrics.py
-from src.metrics.asr_metric import create_metric
+from src.utils.metrics import create_metric
 
 
 @pytest.fixture
