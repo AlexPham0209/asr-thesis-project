@@ -6,16 +6,7 @@ from youtube_transcript_api.formatters import JSONFormatter
 import yt_dlp
 
 dataset_path = os.path.join("data", "raw", "educational_videos")
-videos_path = os.path.join(dataset_path, "videos")
-audios_path = os.path.join(dataset_path, "audio")
-metadata_path = os.path.join(dataset_path, "metadata")
-transcripts_path = os.path.join(dataset_path, "transcripts")
-
 os.makedirs(dataset_path, exist_ok=True)
-os.makedirs(videos_path, exist_ok=True)
-os.makedirs(audios_path, exist_ok=True)
-os.makedirs(metadata_path, exist_ok=True)
-os.makedirs(transcripts_path, exist_ok=True)
 
 def extract_video_id(url):
     """Extracts the 11-character video ID from various YouTube URL formats."""
@@ -40,7 +31,7 @@ def get_youtube_transcript(url):
     except Exception as e:
         return None
     
-def download_audio(url):
+def download_audio(url, path):
     ydl_opts = {
         'format': 'bestaudio',
         'postprocessors': [{
@@ -54,8 +45,8 @@ def download_audio(url):
         ],
         
         'noplaylist': True,
-        'download_archive': os.path.join(audios_path, 'downloaded.txt'), 
-        'outtmpl': os.path.join(audios_path, '%(id)s.%(ext)s') 
+        'download_archive': os.path.join(dataset_path, 'downloaded.txt'), 
+        'outtmpl': os.path.join(path, 'audio.%(ext)s') 
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -65,7 +56,7 @@ def download_audio(url):
         except Exception as e:
             return None
 
-def save_transcript_as_json(transcript, metadata):
+def save_transcript_as_json(transcript, metadata, path):
     formatter = JSONFormatter()
 
     # .format_transcript(transcript) turns the transcript into a JSON string.
@@ -73,10 +64,10 @@ def save_transcript_as_json(transcript, metadata):
     id = metadata.get("id")
 
     # Writing into json file
-    with open(os.path.join(transcripts_path, f'{id}.json'), 'w', encoding='utf-8') as json_file:
+    with open(os.path.join(path, 'transcript.json'), 'w', encoding='utf-8') as json_file:
         json_file.write(json_formatted)
 
-def download_video(url):
+def download_video(url, path):
     ydl_opts = {
         'format': 'bestaudio',
         'postprocessors': [{
@@ -89,7 +80,7 @@ def download_video(url):
             '-ar', '16000'               
         ],
         
-        'outtmpl': os.path.join(videos_path, '%(title)s.%(ext)s') 
+        'outtmpl': os.path.join(path, '%(title)s.%(ext)s') 
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -97,17 +88,20 @@ def download_video(url):
 
 
 def download_sample(url):
+    video_id = extract_video_id(url)
     transcript = get_youtube_transcript(url)
 
     if transcript is None or transcript.is_generated:
         return
     
-    metadata = download_audio(url)
+    path = os.path.join(dataset_path, video_id)
+    os.makedirs(path, exist_ok=True)
+    metadata = download_audio(url, path)
     
     # Saving metadata in their respective folders
-    save_transcript_as_json(transcript, metadata)
+    save_transcript_as_json(transcript, metadata, path)
 
-    with open(os.path.join(metadata_path, f'{metadata.get("id")}.json'), 'w', encoding='utf-8') as json_file:
+    with open(os.path.join(path, 'metadata.json'), 'w', encoding='utf-8') as json_file:
         json.dump(metadata, json_file, indent=2)
 
 
