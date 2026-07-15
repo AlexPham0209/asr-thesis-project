@@ -9,5 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
+# Folders
 outputs/
 logs/
+
+data/**
+!data/*
+
+/models/* 
+
+!.gitkeep
