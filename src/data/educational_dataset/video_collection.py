@@ -75,10 +75,6 @@ def download_video(url, path):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-
-        'postprocessor_args': [
-            '-ar', '16000'               
-        ],
         
         'outtmpl': os.path.join(path, '%(title)s.%(ext)s') 
     }
