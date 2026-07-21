@@ -97,6 +97,9 @@ def download_sample(url):
     path = os.path.join(dataset_path, video_id)
     os.makedirs(path, exist_ok=True)
     metadata = download_audio(url, path)
+
+    if metadata is None:
+        return
     
     # Saving metadata in their respective folders
     save_transcript_as_json(transcript, metadata, path)
@@ -105,4 +108,9 @@ def download_sample(url):
         json.dump(metadata, json_file, indent=2)
 
 
-download_sample("https://www.youtube.com/watch?v=Qf8hIBrsWZI")
+# Downloading videos
+with open(os.path.join(dataset_path, "videos.txt"), "r") as file:
+    videos = file.readlines()
+
+for video in videos:
+    download_sample(video.strip())

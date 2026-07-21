@@ -11,6 +11,7 @@ dependencies = [
     "jiwer>=4.0.0",
     "pytest>=9.1.1",
     "ruff>=0.15.20",
+    "selenium>=4.46.0",
     "torch>=2.11.0",
     "torchcodec>=0.14.0",
     "torchvision>=0.26.0",
