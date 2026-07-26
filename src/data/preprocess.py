@@ -9,6 +9,7 @@ def preprocess(dataset, processor, architecture):
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         audio = batch["audio"]
+        array = audio["array"]
 
         # Process the audio to generate 'input_features' or 'input_values'
         batch = processor(
@@ -40,14 +41,14 @@ def preprocess_speech2latex(dataset, processor, architecture):
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         samples = batch["audio_path"].get_all_samples()
-        audio = samples.data
+        audio = samples.data.squeeze(dim=0)
         
-
         # Process the audio to generate 'input_features' or 'input_values'
         batch = processor(
             audio=audio,
             sampling_rate=target_sampling_rate,
             text=batch["sentence"],
+            return_tensors="pt",
         )
 
         # Remove batch dimension from the input_features and labels
@@ -55,7 +56,7 @@ def preprocess_speech2latex(dataset, processor, architecture):
         batch["labels"] = batch["labels"].squeeze(dim=0)
 
         # Hugging Face models expect text targets to be named 'labels'
-        batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
+        batch["input_length"] = audio.size(dim=-1) / samples.sample_rate
 
         return batch
 

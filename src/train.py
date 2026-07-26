@@ -20,8 +20,8 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
-from src.utils.logger import CustomLoggingCallback
-from src.utils.metrics import create_metric
+from utils.logger import CustomLoggingCallback
+from utils.metrics import create_metric
 
 from data.data_collator import (
     DataCollatorCTCWithPadding,
@@ -78,6 +78,21 @@ def create_custom_trainer(
 ):
     pass
 
+def compute_objective(metrics):
+    # Optuna will minimize the evaluation loss by default (or use "eval_wer" for WER minimization)
+    return metrics["eval_loss"]
+
+
+def hp_space(trial):
+    """Defines the search space for Optuna trials."""
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "per_device_train_batch_size": trial.suggest_categorical(
+            "per_device_train_batch_size", [16, 32, 64]
+        ),
+        "num_train_epochs": trial.suggest_int("num_train_epochs", 2, 5),
+        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2),
+    }
 
 def inference(model, processor, dataset, architecture):
     # Metrics
@@ -88,7 +103,7 @@ def inference(model, processor, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset.take(10):
+    for sample in dataset:
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -105,21 +120,26 @@ def inference(model, processor, dataset, architecture):
                 logits = model(input_features).logits
                 predicted_ids = torch.argmax(logits, dim=-1)
             else:
-                predicted_ids = model.generate(input_features)
+                predicted_ids = model.generate(input_features, max_new_tokens=256)
 
         end_time = time.perf_counter()
 
-        # Ensure tensor type and add batch dimension for the labels
         label_ids = sample["labels"]
-
         if not isinstance(label_ids, torch.Tensor):
             label_ids = torch.tensor(label_ids)
-        
+
+        # Replace -100 padding tokens with pad_token_id
+        pad_token_id = getattr(processor, "pad_token_id", None) or processor.tokenizer.pad_token_id
+        label_ids = torch.where(label_ids != -100, label_ids, pad_token_id)
+
         label_ids = label_ids.unsqueeze(0)
 
         # Decoding prediction and labels
         pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
         label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
+
+        logger.info(label_str[0])
+        logger.info(pred_str[0] + "\n")
 
         audio_duration = sample["input_length"]
         processing_time = end_time - start_time
@@ -131,7 +151,7 @@ def inference(model, processor, dataset, architecture):
 
     wer_score = wer.compute(predictions=predictions, references=labels)
     cer_score = cer.compute(predictions=predictions, references=labels)
-    average_rtfx = torch.tensor(rtfxs).mean(dim=-1)
+    average_rtfx = torch.tensor(rtfxs).mean().item()
 
     return wer_score, cer_score, average_rtfx
 
@@ -171,6 +191,7 @@ def main(cfg: DictConfig):
     app_file_handler = logging.FileHandler(os.path.join(run_directory, "app.log"), mode="w")
     app_file_handler.setFormatter(file_formatter)
     app_logger.addHandler(app_file_handler)
+    app_logger.propagate = False
 
     # Hugging Face Logger Setup (Isolates Hugging Face transformers logs)
     hf_logger_instance = hf_logging.get_logger("transformers")
@@ -192,7 +213,7 @@ def main(cfg: DictConfig):
     if not cfg.get("processor"):
         raise ValueError("Missing 'model' configuration block in your YAML")
 
-    print(f"{cfg.processor}\n")
+    logger.info(f"{cfg.processor}\n")
 
     logger.info("------- Instantiating Model from Configuration -------")
     architecture = cfg.architecture
@@ -205,7 +226,8 @@ def main(cfg: DictConfig):
 
     # Loading in dataset
     datasets = hydra.utils.instantiate(cfg.dataset)
-    train, valid, test = datasets.train, datasets.validation, datasets.test
+    train, test = datasets.train, datasets.test
+    valid = datasets.get("validation", test)
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
@@ -242,6 +264,28 @@ def main(cfg: DictConfig):
 
     # Calculating previous WER scores
     pre_wer, pre_cer, pre_rtfx = inference(model, processor, test, architecture)
+    logger.info(
+        f"Previous Results - WER: {pre_wer:.4f}, CER: {pre_cer:.4f}, RTFX: {pre_rtfx:.2f}"
+    )
+
+    # Execute hyperparameter search
+    n_trials = cfg.get("n_trials", 10)
+    logger.info(f"Starting Optuna search with {n_trials} trials...")
+
+    best_run = trainer.hyperparameter_search(
+        hp_space=hp_space,
+        compute_objective=compute_objective,
+        direction="minimize",
+        backend="optuna",
+        n_trials=n_trials,
+    )
+
+    logger.info("------- Best Hyperparameters Found -------")
+    logger.info(best_run)
+
+    # Re-train with the best hyperparameters
+    for k, v in best_run.hyperparameters.items():
+        setattr(trainer.args, k, v)
 
     # Training and logging metrics
     train_results = trainer.train()
@@ -258,7 +302,13 @@ def main(cfg: DictConfig):
     trainer.save_model(os.path.join(model_directory, timestamp))
 
     # Evaluating finetuned model on test dataset
-    post_wer, post_cer, post_rtfx = inference(model, processor, test, architecture)
+    logger.info("------- Evaluating Best Model on Test Dataset -------")
+    post_wer, post_cer, post_rtfx = inference(
+        trainer.model, processor, test, architecture
+    )
+    logger.info(
+        f"Test Results - WER: {post_wer:.4f}, CER: {post_cer:.4f}, RTFX: {post_rtfx:.2f}"
+    )
 
 
 if __name__ == "__main__":
