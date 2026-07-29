@@ -1,3 +1,4 @@
+from builtins import getattr
 from datetime import datetime
 import logging
 import os
@@ -42,7 +43,7 @@ def create_seq2seq_trainer(
 
     trainer = Seq2SeqTrainer(
         args=training_args,
-        model=model,
+        model_init=model,
         train_dataset=train,
         eval_dataset=valid,
         data_collator=data_collator,
@@ -60,7 +61,7 @@ def create_ctc_trainer(
     training_args = TrainingArguments(**cfg.training)
 
     trainer = Trainer(
-        model=model,
+        model_init=model,
         data_collator=data_collator,
         args=training_args,
         train_dataset=train,
@@ -94,7 +95,7 @@ def hp_space(trial):
         "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2),
     }
 
-def inference(model, processor, dataset, architecture):
+def inference(model, processor, normalizer, dataset, architecture):
     # Metrics
     wer = evaluate.load("wer")
     cer = evaluate.load("cer")
@@ -103,7 +104,7 @@ def inference(model, processor, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset:
+    for sample in dataset.take(30):
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -136,10 +137,7 @@ def inference(model, processor, dataset, architecture):
 
         # Decoding prediction and labels
         pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
-        label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
-
-        logger.info(label_str[0])
-        logger.info(pred_str[0] + "\n")
+        label_str = processor.batch_decode(label_ids, skip_special_tokens=True, group_tokens=False)
 
         audio_duration = sample["input_length"]
         processing_time = end_time - start_time
@@ -149,12 +147,22 @@ def inference(model, processor, dataset, architecture):
         labels.extend(label_str)
         rtfxs.append(rtfx)
 
-    wer_score = wer.compute(predictions=predictions, references=labels)
-    cer_score = cer.compute(predictions=predictions, references=labels)
+    wer_ortho = 100 * wer.compute(predictions=predictions, references=labels)
+    cer_ortho = 100 * cer.compute(predictions=predictions, references=labels)
+    wer_score = None
+    cer_score = None
     average_rtfx = torch.tensor(rtfxs).mean().item()
 
-    return wer_score, cer_score, average_rtfx
+    if normalizer:
+        preds_norm = list(map(lambda str: normalizer(str), predictions))
+        labels_norm = list(map(lambda str: normalizer(str), labels))
+        wer_score = 100 * wer.compute(predictions=preds_norm, references=labels_norm)
+        cer_score = 100 * cer.compute(predictions=preds_norm, references=labels_norm)
 
+    return wer_ortho, cer_ortho, wer_score, cer_score, average_rtfx
+
+def create_diagrams(history): 
+    print()
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
@@ -219,6 +227,7 @@ def main(cfg: DictConfig):
     architecture = cfg.architecture
     processor = hydra.utils.instantiate(cfg.processor)
     model = hydra.utils.instantiate(cfg.model).to(device)
+    normalizer = hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
 
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
@@ -237,13 +246,17 @@ def main(cfg: DictConfig):
     test = preprocess_fn(test)
 
     # Creating metrics
-    compute_metrics = create_metric(processor=processor)
+    compute_metrics = create_metric(processor=processor, normalizer=normalizer)
+
+    # Model init
+    def model_init(trial):
+        return hydra.utils.instantiate(cfg.model).to(device)
 
     # Creating trainer
     trainer = (
         create_ctc_trainer(
             cfg=cfg,
-            model=model,
+            model=model_init,
             processor=processor,
             train=train,
             valid=valid,
@@ -253,7 +266,7 @@ def main(cfg: DictConfig):
         if architecture == "ctc"
         else create_seq2seq_trainer(
             cfg=cfg,
-            model=model,
+            model=model_init,
             processor=processor,
             train=train,
             valid=valid,
@@ -263,7 +276,7 @@ def main(cfg: DictConfig):
     )
 
     # Calculating previous WER scores
-    pre_wer, pre_cer, pre_rtfx = inference(model, processor, test, architecture)
+    pre_wer_ortho, pre_cer_portho, pre_wer, pre_cer, pre_rtfx = inference(model, processor, normalizer, test, architecture)
     logger.info(
         f"Previous Results - WER: {pre_wer:.4f}, CER: {pre_cer:.4f}, RTFX: {pre_rtfx:.2f}"
     )
@@ -291,6 +304,7 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
+    create_diagrams(trainer.state.log_history)
 
     # Evaluate using the validation dataset
     valid_metrics = trainer.evaluate()
@@ -303,7 +317,7 @@ def main(cfg: DictConfig):
 
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
-    post_wer, post_cer, post_rtfx = inference(
+    post_wer_ortho, post_cer_ortho, post_wer, post_cer, post_rtfx = inference(
         trainer.model, processor, test, architecture
     )
     logger.info(

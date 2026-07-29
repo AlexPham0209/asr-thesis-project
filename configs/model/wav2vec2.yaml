@@ -13,3 +13,6 @@ processor:
   _target_: transformers.AutoProcessor.from_pretrained
   pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
 
+normalizer:
+  _target_: data.normalizer.normalize_wav2vec2
+  _partial_: true

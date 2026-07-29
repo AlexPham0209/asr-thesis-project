@@ -2,14 +2,9 @@
 
 defaults:
   - model: whisper_tiny   
-  - dataset: speech2latex    
+  - dataset: librispeech    
+  - training: seq2seq
   - _self_
-
-training:
-  eval_strategy: epoch
-  save_strategy: epoch
-  num_train_epochs: 10
-  max_steps: 1000
 
 logging_directory: logs
 model_directory: models

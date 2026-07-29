@@ -8,3 +8,6 @@ model:
 processor:
   _target_: transformers.AutoProcessor.from_pretrained
   pretrained_model_name_or_path: "openai/whisper-tiny"
+
+normalizer:
+  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer
