@@ -15,7 +15,9 @@ def create_metric(processor, normalizer=None):
         pred.label_ids[pred.label_ids == -100] = processor.tokenizer.pad_token_id
 
         pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
-        label_str = processor.batch_decode(pred.label_ids, skip_special_tokens=True, group_tokens=False)
+        label_str = processor.batch_decode(
+            pred.label_ids, skip_special_tokens=True, group_tokens=False
+        )
 
         wer_ortho = 100 * wer.compute(predictions=pred_str, references=label_str)
         cer_ortho = 100 * cer.compute(predictions=pred_str, references=label_str)
@@ -29,8 +31,12 @@ def create_metric(processor, normalizer=None):
             pred_str_norm = list(map(lambda str: normalizer(str), pred_str))
             label_str_norm = list(map(lambda str: normalizer(str), label_str))
 
-            wer_score = 100 * wer.compute(predictions=pred_str_norm, references=label_str_norm)
-            cer_score = 100 * cer.compute(predictions=pred_str_norm, references=label_str_norm)
+            wer_score = 100 * wer.compute(
+                predictions=pred_str_norm, references=label_str_norm
+            )
+            cer_score = 100 * cer.compute(
+                predictions=pred_str_norm, references=label_str_norm
+            )
 
             results["wer"] = wer_score
             results["cer"] = cer_score

@@ -15,9 +15,7 @@ def wav2vec2():
 @pytest.fixture(scope="module")
 def whisper():
     # Using a micro-sized configuration/model specifically meant for testing
-    return AutoProcessor.from_pretrained(
-        "openai/whisper-tiny"
-    )
+    return AutoProcessor.from_pretrained("openai/whisper-tiny")
 
 
 @pytest.fixture(scope="module")

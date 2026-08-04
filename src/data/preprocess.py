@@ -5,7 +5,7 @@ def preprocess(dataset, processor, architecture):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
-    
+
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         audio = batch["audio"]
@@ -38,12 +38,12 @@ def preprocess_speech2latex(dataset, processor, architecture):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
-    
+
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         samples = batch["audio_path"].get_all_samples()
         audio = samples.data.squeeze(dim=0)
-        
+
         # Process the audio to generate 'input_features' or 'input_values'
         batch = processor(
             audio=audio,

@@ -3,6 +3,7 @@ architecture: seq2seq
 
 model:
   _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
+  _partial_: true
   pretrained_model_name_or_path: "openai/whisper-tiny"
 
 processor:

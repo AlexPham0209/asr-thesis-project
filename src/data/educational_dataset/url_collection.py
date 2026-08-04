@@ -4,19 +4,20 @@ from selenium import webdriver
 from selenium.webdriver import ChromeOptions
 import yt_dlp
 
+
 def get_videos_from_playlist(playlist_url):
     ydl_opts = {
-        'extract_flat': True,  # Only extract metadata, do not download media
-        'skip_download': True, # Explicitly skip downloading actual files
+        "extract_flat": True,  # Only extract metadata, do not download media
+        "skip_download": True,  # Explicitly skip downloading actual files
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         result = ydl.extract_info(playlist_url, download=False)
 
-        if 'entries' not in result:
+        if "entries" not in result:
             return
-        
-        videos = result['entries']
+
+        videos = result["entries"]
 
         return videos
 
@@ -38,4 +39,3 @@ for playlist in playlists:
 # Writing all video urls in file
 with open(os.path.join(dataset_path, "videos.txt"), "w") as f:
     f.write("\n".join(urls))
-
