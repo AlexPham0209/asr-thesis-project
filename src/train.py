@@ -32,6 +32,7 @@ from data.data_collator import (
 import logging
 from transformers.utils import logging as hf_logging
 
+HF_TOKEN = os.environ['HF_TOKEN']
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -169,7 +170,7 @@ def inference(model, processor, normalizer, dataset, architecture):
 
 
 def create_diagrams(history):
-    print()
+    ortho_wer = [entry["ortho_wer"] for entry in history] 
 
 
 def initialize_loggers(cfg, timestamp):

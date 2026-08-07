@@ -64,4 +64,5 @@ def preprocess_speech2latex(dataset, processor, architecture):
     # Map the preprocessing function across the entire dataset in batches
     dataset = dataset.map(preprocess, remove_columns=dataset.column_names)
     dataset = dataset.with_format(type="torch")
+    dataset = dataset.filter(lambda sample: sample["language"] == "eng")
     return dataset
