@@ -13,7 +13,7 @@ class CustomLoggingCallback(TrainerCallback):
             return
 
         current_step = state.global_step
-        metrics = " - ".join([f"{key}: {value}" for key, value in logs.items()])
+        metrics = " - ".join([f"{key}: {value:.4f}" for key, value in logs.items()])
 
         if self.logger is not None:
             self.logger.info(f"step {current_step} - {metrics}")

@@ -1,5 +1,6 @@
 import evaluate
 import numpy as np
+import torch
 
 # Metrics
 wer = evaluate.load("wer")
@@ -10,6 +11,13 @@ cer = evaluate.load("cer")
 def create_metric(processor, normalizer=None):
     def compute_metrics(pred):
         pred_ids = pred.predictions
+
+        if isinstance(pred_ids, tuple):
+            pred_ids = pred_ids[0]
+
+        if isinstance(pred_ids, torch.Tensor) and pred_ids.ndim == 3:
+            pred_ids = pred_ids.argmax(dim=-1)
+            
         pred.label_ids[pred.label_ids == -100] = processor.tokenizer.pad_token_id
 
         pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)

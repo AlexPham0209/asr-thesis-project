@@ -48,7 +48,7 @@ def test_whisper_processor_audio_output(whisper, sample_audio):
     }
 
     dataset = IterableDataset.from_list([sample])
-    dataset = preprocess(dataset, whisper, "seq2seq")
+    dataset = preprocess(dataset, whisper, "seq2seq", None)
 
     result = next(iter(dataset))
 
@@ -76,7 +76,7 @@ def test_wav2vec2_processor_audio_output(wav2vec2, sample_audio):
     }
 
     dataset = IterableDataset.from_list([sample])
-    dataset = preprocess(dataset, wav2vec2, "ctc")
+    dataset = preprocess(dataset, wav2vec2, "ctc", None)
 
     result = next(iter(dataset))
 
@@ -103,7 +103,7 @@ def test_processor_resampling(whisper):
     }
 
     dataset = Dataset.from_list([sample])
-    dataset = preprocess(dataset, whisper, "seq2seq")
+    dataset = preprocess(dataset, whisper, "seq2seq", None)
 
     result = next(iter(dataset))
 

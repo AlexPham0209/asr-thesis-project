@@ -12,6 +12,7 @@ dependencies = [
     "jiwer>=4.0.0",
     "matplotlib>=3.11.1",
     "optuna>=4.9.0",
+    "peft>=0.20.0",
     "pydub>=0.25.1",
     "pytest>=9.1.1",
     "ruff>=0.15.20",
@@ -20,6 +21,7 @@ dependencies = [
     "torchcodec>=0.14.0",
     "torchvision>=0.26.0",
     "transformers[torch]>=5.12.1",
+    "whisper-normalizer>=0.1.15",
     "youtube-transcript-api>=1.2.4",
     "yt-dlp[default]>=2026.7.4",
 ]

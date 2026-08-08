@@ -21,6 +21,7 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
+from src.data.normalizer import create_latex_normalizer
 from utils.logger import CustomLoggingCallback
 from utils.metrics import create_metric
 
@@ -31,10 +32,11 @@ from data.data_collator import (
 
 import logging
 from transformers.utils import logging as hf_logging
+from peft import get_peft_model, LoraConfig
 import warnings
 
 # HF_TOKEN = os.environ['HF_TOKEN']
-warnings.filterwarnings("ignore", category=UserWarning) 
+warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -61,7 +63,11 @@ def create_seq2seq_trainer(
 def create_ctc_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator
 ):
-    training_args = TrainingArguments(**cfg.training)
+    model_path = os.path.join(cfg.model_directory, model.config._name_or_path)
+    training_args = TrainingArguments(
+        **cfg.training,
+        output_dir=model_path
+    )
 
     trainer = Trainer(
         model_init=model,
@@ -172,9 +178,10 @@ def inference(model, processor, normalizer, dataset, architecture):
 
 
 def create_diagrams(history):
-    ortho_wer = [entry["eval_ortho_wer"] for entry in history] 
-    ortho_cer = [entry["eval_ortho_cer"] for entry in history] 
-    wer = [entry["eval_wer"] for entry in history] 
+    loss = [entry["eval_loss"] for entry in history]
+    ortho_wer = [entry["eval_ortho_wer"] for entry in history]
+    ortho_cer = [entry["eval_ortho_cer"] for entry in history]
+    wer = [entry["eval_wer"] for entry in history]
     cer = [entry["eval_cer"] for entry in history]
 
 
@@ -253,10 +260,16 @@ def main(cfg: DictConfig):
     # Model init
     def model_init(trial):
         model = hydra.utils.instantiate(cfg.model)
-        return model(
+        model = model(
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
         ).to(device)
+
+        if cfg.get("use_lora", False) and cfg.get("lora_config"):
+            config = LoraConfig(**cfg.lora_config)
+            model = get_peft_model(model, config)
+
+        return model
 
     architecture = cfg.architecture
     processor = hydra.utils.instantiate(cfg.processor)
@@ -264,6 +277,7 @@ def main(cfg: DictConfig):
     normalizer = (
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     )
+    latex_normalizer = create_latex_normalizer(normalizer=normalizer)
 
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
@@ -276,15 +290,20 @@ def main(cfg: DictConfig):
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
+
+    normalize_during_preprocessing = cfg.get("normalize_during_preprocessing", False)
     preprocess_fn = hydra.utils.instantiate(
-        cfg.preprocess, processor=processor, architecture=architecture
+        cfg.preprocess,
+        processor=processor,
+        architecture=architecture,
+        normalizer=normalizer if normalize_during_preprocessing else None,
     )
     train = preprocess_fn(train)
     valid = preprocess_fn(valid)
     test = preprocess_fn(test)
 
     # Creating metrics
-    compute_metrics = create_metric(processor=processor, normalizer=normalizer)
+    compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
     # Creating trainer
     trainer = (
@@ -311,7 +330,7 @@ def main(cfg: DictConfig):
 
     # Calculating previous WER scores
     pre_wer_ortho, pre_cer_portho, pre_wer, pre_cer, pre_rtfx = inference(
-        model, processor, normalizer, test, architecture
+        model, processor, latex_normalizer, test, architecture
     )
     logger.info(
         f"Previous Results - WER: {pre_wer:.4f}, CER: {pre_cer:.4f}, RTFX: {pre_rtfx:.2f}"
@@ -358,7 +377,7 @@ def main(cfg: DictConfig):
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
     post_wer_ortho, post_cer_ortho, post_wer, post_cer, post_rtfx = inference(
-        trainer.model, processor, test, architecture, normalizer
+        trainer.model, processor, test, architecture, latex_normalizer
     )
     logger.info(
         f"Test Results - WER: {post_wer:.4f}, CER: {post_cer:.4f}, RTFX: {post_rtfx:.2f}"

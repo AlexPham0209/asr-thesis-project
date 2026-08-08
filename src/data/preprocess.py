@@ -1,7 +1,7 @@
 from datasets.features import Audio
 
 
-def preprocess(dataset, processor, architecture):
+def preprocess(dataset, processor, architecture, normalizer):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
@@ -11,11 +11,15 @@ def preprocess(dataset, processor, architecture):
         audio = batch["audio"]
         array = audio["array"]
 
+        text = batch["text"]
+        if normalizer:
+            text = normalizer(text)
+
         # Process the audio to generate 'input_features' or 'input_values'
         batch = processor(
             audio=audio["array"],
             sampling_rate=target_sampling_rate,
-            text=batch["text"],
+            text=text,
             return_tensors="pt",
         )
 
@@ -34,7 +38,7 @@ def preprocess(dataset, processor, architecture):
     return dataset
 
 
-def preprocess_speech2latex(dataset, processor, architecture):
+def preprocess_speech2latex(dataset, processor, architecture, normalizer):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
@@ -44,11 +48,15 @@ def preprocess_speech2latex(dataset, processor, architecture):
         samples = batch["audio_path"].get_all_samples()
         audio = samples.data.squeeze(dim=0)
 
+        text = batch["sentence"]
+        if normalizer:
+            text = normalizer(text)
+
         # Process the audio to generate 'input_features' or 'input_values'
         batch = processor(
             audio=audio,
             sampling_rate=target_sampling_rate,
-            text=batch["sentence"],
+            text=text,
             return_tensors="pt",
         )
 
