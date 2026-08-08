@@ -3,7 +3,7 @@ name = "asr-thesis-project"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = "==3.13.14"
+requires-python = ">=3.13"
 dependencies = [
     "audioop-lts>=0.2.2",
     "datasets[audio]>=5.0.0",
