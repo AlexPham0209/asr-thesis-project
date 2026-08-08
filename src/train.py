@@ -31,8 +31,10 @@ from data.data_collator import (
 
 import logging
 from transformers.utils import logging as hf_logging
+import warnings
 
-HF_TOKEN = os.environ['HF_TOKEN']
+# HF_TOKEN = os.environ['HF_TOKEN']
+warnings.filterwarnings("ignore", category=UserWarning) 
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -107,7 +109,7 @@ def inference(model, processor, normalizer, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset.take(30):
+    for sample in dataset:
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -170,7 +172,10 @@ def inference(model, processor, normalizer, dataset, architecture):
 
 
 def create_diagrams(history):
-    ortho_wer = [entry["ortho_wer"] for entry in history] 
+    ortho_wer = [entry["eval_ortho_wer"] for entry in history] 
+    ortho_cer = [entry["eval_ortho_cer"] for entry in history] 
+    wer = [entry["eval_wer"] for entry in history] 
+    cer = [entry["eval_cer"] for entry in history]
 
 
 def initialize_loggers(cfg, timestamp):
@@ -194,7 +199,6 @@ def initialize_loggers(cfg, timestamp):
     # Root Logger Setup (Captures everything)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(screen_handler)
 
     root_file_handler = logging.FileHandler(
         os.path.join(run_directory, "all.log"), mode="w"
