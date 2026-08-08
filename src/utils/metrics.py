@@ -9,9 +9,7 @@ cer = evaluate.load("cer")
 # Curried function for evaluating metrics
 def create_metric(processor, normalizer=None):
     def compute_metrics(pred):
-        pred_logits = pred.predictions
-        pred_ids = np.argmax(pred_logits, axis=-1)
-
+        pred_ids = pred.predictions
         pred.label_ids[pred.label_ids == -100] = processor.tokenizer.pad_token_id
 
         pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)

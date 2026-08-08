@@ -199,6 +199,7 @@ def initialize_loggers(cfg, timestamp):
     # Root Logger Setup (Captures everything)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(screen_handler)
 
     root_file_handler = logging.FileHandler(
         os.path.join(run_directory, "all.log"), mode="w"
