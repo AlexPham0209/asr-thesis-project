@@ -2,9 +2,9 @@
 
 defaults:
   - model: whisper_tiny   
-  - dataset: librispeech    
+  - dataset: speech2latex    
   - training: seq2seq
-  - lora_config: whisper
+  - lora: whisper
   - _self_
 
 logging_directory: logs
@@ -12,5 +12,6 @@ model_directory: models
 results_directory: results
 
 # Misc. Settings
-normalize_during_preprocessing: true
+normalize_during_preprocessing: false
 use_lora: false
+use_hyperparameter_search: false

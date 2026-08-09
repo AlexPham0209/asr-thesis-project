@@ -5,6 +5,8 @@ import os
 import sys
 import time
 
+os.environ["HF_HOME"] = "/ocean/projects/cis250209p/apham8/.cache/huggingface"
+
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -21,7 +23,7 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
-from src.data.normalizer import create_latex_normalizer
+from data.normalizer import create_latex_normalizer
 from utils.logger import CustomLoggingCallback
 from utils.metrics import create_metric
 
@@ -39,6 +41,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 
 def create_seq2seq_trainer(
@@ -115,7 +118,7 @@ def inference(model, processor, normalizer, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset:
+    for sample in dataset.take(10):
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -241,6 +244,8 @@ def main(cfg: DictConfig):
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
 
+    logger.info(device)
+
     logger.info("------- Running Experiment Configuration -------")
 
     if not cfg.get("model"):
@@ -341,23 +346,24 @@ def main(cfg: DictConfig):
     torch.cuda.empty_cache()
 
     # Execute hyperparameter search
-    n_trials = cfg.get("n_trials", 10)
-    logger.info(f"Starting Optuna search with {n_trials} trials...")
-
-    best_run = trainer.hyperparameter_search(
-        hp_space=hp_space,
-        compute_objective=compute_objective,
-        direction="minimize",
-        backend="optuna",
-        n_trials=n_trials,
-    )
-
-    logger.info("------- Best Hyperparameters Found -------")
-    logger.info(best_run)
-
-    # Re-train with the best hyperparameters
-    for k, v in best_run.hyperparameters.items():
-        setattr(trainer.args, k, v)
+    if cfg.get("use_hyperparameter_search", False):
+        n_trials = cfg.get("n_trials", 10)
+        logger.info(f"Starting Optuna search with {n_trials} trials...")
+    
+        best_run = trainer.hyperparameter_search(
+            hp_space=hp_space,
+            compute_objective=compute_objective,
+            direction="minimize",
+            backend="optuna",
+            n_trials=n_trials,
+        )
+    
+        logger.info("------- Best Hyperparameters Found -------")
+        logger.info(best_run)
+    
+        # Re-train with the best hyperparameters
+        for k, v in best_run.hyperparameters.items():
+            setattr(trainer.args, k, v)
 
     # Training and logging metrics
     train_results = trainer.train()

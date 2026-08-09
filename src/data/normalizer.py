@@ -15,15 +15,17 @@ def normalize_whisper(s):
     normalizer = BasicTextNormalizer()
     return normalizer(s)
 
+def is_valid_equation_sentence(s):
+    unescaped_dollars = re.sub(r"\\\$", "", s)
+    return unescaped_dollars.count("$") % 2 == 0
 
 def create_latex_normalizer(normalizer):
     def normalize_latex(s: str) -> str:
-        unescaped_dollars = re.sub(r"\\\$", "", s)
-        if unescaped_dollars.count("$") % 2 != 0:
-            raise ValueError("Unmatched '$' in input string")
-
+        # if not is_valid_equation_sentence(s):
+        #     raise ValueError("Unmatched '$' in input string")
+        
         math_pattern = r"(\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$)"
-
+        
         tokens = re.split(math_pattern, s, flags=re.DOTALL)
 
         res = []
