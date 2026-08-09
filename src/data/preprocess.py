@@ -1,5 +1,5 @@
 from datasets.features import Audio
-from data.normalizer import is_valid_equation_sentence
+from data.normalizer import contains_equation, has_valid_equation
 
 
 def preprocess(dataset, processor, architecture, normalizer):
@@ -45,7 +45,8 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer):
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
     dataset = dataset.select(range(1000)).filter(lambda sample: len(sample["sentence"]) <= 200)
     dataset = dataset.filter(lambda sample: sample["language"] == "eng")
-    dataset = dataset.filter(lambda sample: is_valid_equation_sentence(sample["sentence"]))
+    dataset = dataset.filter(lambda sample: has_valid_equation(sample["sentence"]))
+    dataset = dataset.filter(lambda sample: contains_equation(sample["sentence"]))
 
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column

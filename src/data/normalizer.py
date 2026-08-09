@@ -15,9 +15,14 @@ def normalize_whisper(s):
     normalizer = BasicTextNormalizer()
     return normalizer(s)
 
-def is_valid_equation_sentence(s):
+def has_valid_equation(s):
     unescaped_dollars = re.sub(r"\\\$", "", s)
     return unescaped_dollars.count("$") % 2 == 0
+
+def contains_equation(s):
+    math_pattern = r"\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$"
+    return re.search(math_pattern, s, flags=re.DOTALL) != None
+
 
 def create_latex_normalizer(normalizer):
     def normalize_latex(s: str) -> str:
@@ -33,7 +38,7 @@ def create_latex_normalizer(normalizer):
             if not token:
                 continue
 
-            # Normalize non-math text while keeping math text the same
+            # Check if this token is a math block
             if re.fullmatch(math_pattern, token, flags=re.DOTALL):
                 res.append(token)
             else:
