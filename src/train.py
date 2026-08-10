@@ -33,6 +33,7 @@ import logging
 from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
 import warnings
+import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
@@ -174,13 +175,25 @@ def inference(model, processor, normalizer, dataset, architecture):
     return wer_ortho, cer_ortho, wer_score, cer_score, average_rtfx
 
 
-def create_diagrams(history):
+def create_diagrams(history, cfg):
     loss = [entry["eval_loss"] for entry in history]
     ortho_wer = [entry["eval_ortho_wer"] for entry in history]
     ortho_cer = [entry["eval_ortho_cer"] for entry in history]
     wer = [entry["eval_wer"] for entry in history]
     cer = [entry["eval_cer"] for entry in history]
 
+    
+    create_diagram("Loss", loss, cfg)
+
+
+def create_diagram(points, name, path):
+    plt.plot(points)
+    plt.legend()
+    plt.xlabel("Epochs")
+    plt.ylabel(name)
+    plt.title(name)
+    plt.savefig(path)
+    
 
 def initialize_loggers(cfg, timestamp):
     logging_directory = cfg.logging_directory
@@ -273,6 +286,11 @@ def main(cfg: DictConfig):
             config = LoraConfig(**cfg.lora_config)
             model = get_peft_model(model, config).to(device)
 
+            trainable_parameters = model.get_nb_trainable_parameters()
+            all_parameters = len(model.parameters())
+            percentage = all_parameters / trainable_parameters
+            logger.info(f"Trainable params: {trainable_parameters} | All params: {all_parameters} | Trainable%: {percentage}")
+
         return model
 
     architecture = cfg.architecture
@@ -340,7 +358,7 @@ def main(cfg: DictConfig):
         f"Previous Results - WER: {pre_wer:.4f}, CER: {pre_cer:.4f}, RTFX: {pre_rtfx:.2f}"
     )
 
-    # Deleting pre-evaluation model
+    # Deleting pre-evaluation model and clearing cache
     del model
     torch.cuda.empty_cache()
 
@@ -368,7 +386,7 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-    create_diagrams(trainer.state.log_history)
+    create_diagrams(trainer.state.log_history, cfg)
 
     # Evaluate using the validation dataset
     valid_metrics = trainer.evaluate()
