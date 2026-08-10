@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - model: whisper_tiny   
+  - model: whisper_small   
   - dataset: speech2latex    
   - training: seq2seq
   - lora: whisper
@@ -13,5 +13,5 @@ results_directory: results
 
 # Misc. Settings
 normalize_during_preprocessing: false
-use_lora: false
+use_lora: true
 use_hyperparameter_search: false

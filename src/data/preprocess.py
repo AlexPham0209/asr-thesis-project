@@ -43,10 +43,11 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
-    dataset = dataset.select(range(1000)).filter(lambda sample: len(sample["sentence"]) <= 200)
-    dataset = dataset.filter(lambda sample: sample["language"] == "eng")
-    dataset = dataset.filter(lambda sample: has_valid_equation(sample["sentence"]))
-    dataset = dataset.filter(lambda sample: contains_equation(sample["sentence"]))
+    dataset = dataset.select(range(1000)).filter(lambda sample: len(sample["sentence"]) <= 200, num_proc=10)
+    dataset = dataset.filter(lambda sample: sample["language"] == "eng", num_proc=10)
+    dataset = dataset.filter(lambda sample: has_valid_equation(sample["sentence"]), num_proc=10)
+    dataset = dataset.filter(lambda sample: contains_equation(sample["sentence"]), num_proc=10)
+    dataset = dataset.filter(lambda sample: sample["audio_path"].get_all_samples().data.ndim == 2 and sample["audio_path"].get_all_samples().data.shape[0] == 1, num_proc=10)
 
     def preprocess(batch):
         # Extract raw audio arrays from the nested 'audio' dictionary column

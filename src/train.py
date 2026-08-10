@@ -4,9 +4,6 @@ import logging
 import os
 import sys
 import time
-
-os.environ["HF_HOME"] = "/ocean/projects/cis250209p/apham8/.cache/huggingface"
-
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -37,12 +34,9 @@ from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
 import warnings
 
-# HF_TOKEN = os.environ['HF_TOKEN']
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
 
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator
@@ -135,7 +129,7 @@ def inference(model, processor, normalizer, dataset, architecture):
                 logits = model(input_features).logits
                 predicted_ids = torch.argmax(logits, dim=-1)
             else:
-                predicted_ids = model.generate(input_features, max_new_tokens=256)
+                predicted_ids = model.generate(input_features=input_features)
 
         end_time = time.perf_counter()
 
@@ -270,9 +264,14 @@ def main(cfg: DictConfig):
             vocab_size=len(processor.tokenizer),
         ).to(device)
 
+        if hasattr(model, "config"):
+            model.config.forced_decoder_ids = None
+            model.config.suppress_tokens = []
+            model.config.use_cache = False
+
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             config = LoraConfig(**cfg.lora_config)
-            model = get_peft_model(model, config)
+            model = get_peft_model(model, config).to(device)
 
         return model
 
@@ -383,7 +382,7 @@ def main(cfg: DictConfig):
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
     post_wer_ortho, post_cer_ortho, post_wer, post_cer, post_rtfx = inference(
-        trainer.model, processor, test, architecture, latex_normalizer
+        trainer.model, processor, latex_normalizer, test, architecture
     )
     logger.info(
         f"Test Results - WER: {post_wer:.4f}, CER: {post_cer:.4f}, RTFX: {post_rtfx:.2f}"
