@@ -1,8 +1,8 @@
 # @package _global_
 
 lora_config: 
-  r: 16 
-  lora_alpha: 32  
+  r: 8 
+  lora_alpha: 16  
   target_modules: [
     "q_proj",
     "v_proj",

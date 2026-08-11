@@ -40,9 +40,13 @@ logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def create_seq2seq_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator
+    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
 ):
-    training_args = Seq2SeqTrainingArguments(**cfg.training)
+    model_path = os.path.join(cfg.model_directory, f"{cfg.get("model_name", "model")}_{timestamp}")
+    training_args = Seq2SeqTrainingArguments(
+        **cfg.training,
+        output_dir=model_path
+    )
 
     trainer = Seq2SeqTrainer(
         args=training_args,
@@ -59,9 +63,10 @@ def create_seq2seq_trainer(
 
 
 def create_ctc_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator
+    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
 ):
-    model_path = os.path.join(cfg.model_directory, model.config._name_or_path)
+    training_args = TrainingArguments(**cfg.training)
+    model_path = os.path.join(cfg.model_directory, f"{cfg.get("model_name", "model")}_{timestamp}")
     training_args = TrainingArguments(
         **cfg.training,
         output_dir=model_path
@@ -286,10 +291,9 @@ def main(cfg: DictConfig):
             config = LoraConfig(**cfg.lora_config)
             model = get_peft_model(model, config).to(device)
 
-            trainable_parameters = model.get_nb_trainable_parameters()
-            all_parameters = len(model.parameters())
-            percentage = all_parameters / trainable_parameters
-            logger.info(f"Trainable params: {trainable_parameters} | All params: {all_parameters} | Trainable%: {percentage}")
+            trainable_params, all_params = model.get_nb_trainable_parameters()
+            percentage = trainable_params / all_params
+            logger.info(f"Trainable params: {trainable_params} | All params: {all_params} | Trainable%: {percentage:.2f}%")
 
         return model
 
@@ -337,6 +341,7 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorCTCWithPadding(processor=processor),
+            timestamp=timestamp
         )
         if architecture == "ctc"
         else create_seq2seq_trainer(
@@ -347,6 +352,7 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
+            timestamp=timestamp
         )
     )
 
@@ -392,7 +398,7 @@ def main(cfg: DictConfig):
     valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
-
+    
     # Saving model
     model_directory = cfg.model_directory
     trainer.save_model(os.path.join(model_directory, timestamp))
