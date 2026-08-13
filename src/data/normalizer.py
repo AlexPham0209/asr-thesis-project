@@ -15,9 +15,11 @@ def normalize_whisper(s):
     normalizer = BasicTextNormalizer()
     return normalizer(s)
 
+
 def has_valid_equation(s):
     unescaped_dollars = re.sub(r"\\\$", "", s)
     return unescaped_dollars.count("$") % 2 == 0
+
 
 def contains_equation(s):
     math_pattern = r"\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$"
@@ -28,9 +30,9 @@ def create_latex_normalizer(normalizer):
     def normalize_latex(s: str) -> str:
         # if not is_valid_equation_sentence(s):
         #     raise ValueError("Unmatched '$' in input string")
-        
+
         math_pattern = r"(\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$)"
-        
+
         tokens = re.split(math_pattern, s, flags=re.DOTALL)
 
         res = []

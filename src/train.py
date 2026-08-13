@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+from data.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -39,14 +40,14 @@ warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
 ):
-    model_path = os.path.join(cfg.model_directory, f"{cfg.get("model_name", "model")}_{timestamp}")
-    training_args = Seq2SeqTrainingArguments(
-        **cfg.training,
-        output_dir=model_path
+    model_path = os.path.join(
+        cfg.model_directory, f"{cfg.get('model_name', 'model')}_{timestamp}"
     )
+    training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_path)
 
     trainer = Seq2SeqTrainer(
         args=training_args,
@@ -65,12 +66,8 @@ def create_seq2seq_trainer(
 def create_ctc_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
 ):
-    training_args = TrainingArguments(**cfg.training)
-    model_path = os.path.join(cfg.model_directory, f"{cfg.get("model_name", "model")}_{timestamp}")
-    training_args = TrainingArguments(
-        **cfg.training,
-        output_dir=model_path
-    )
+    model_path = os.path.join(cfg.model_directory, model.config._name_or_path)
+    training_args = TrainingArguments(**cfg.training, output_dir=model_path)
 
     trainer = Trainer(
         model_init=model,
@@ -165,19 +162,9 @@ def inference(model, processor, normalizer, dataset, architecture):
         labels.extend(label_str)
         rtfxs.append(rtfx)
 
-    wer_ortho = 100 * wer.compute(predictions=predictions, references=labels)
-    cer_ortho = 100 * cer.compute(predictions=predictions, references=labels)
-    wer_score = None
-    cer_score = None
-    average_rtfx = torch.tensor(rtfxs).mean().item()
-
-    if normalizer:
-        preds_norm = list(map(lambda str: normalizer(str), predictions))
-        labels_norm = list(map(lambda str: normalizer(str), labels))
-        wer_score = 100 * wer.compute(predictions=preds_norm, references=labels_norm)
-        cer_score = 100 * cer.compute(predictions=preds_norm, references=labels_norm)
-
-    return wer_ortho, cer_ortho, wer_score, cer_score, average_rtfx
+    metrics = LatexInContextMetrics(text_normalizer=normalizer)
+    result = metrics.compute_all(predictions=predictions, references=labels)
+    return result
 
 
 def create_diagrams(history, cfg):
@@ -187,7 +174,6 @@ def create_diagrams(history, cfg):
     wer = [entry["eval_wer"] for entry in history]
     cer = [entry["eval_cer"] for entry in history]
 
-    
     create_diagram("Loss", loss, cfg)
 
 
@@ -198,7 +184,7 @@ def create_diagram(points, name, path):
     plt.ylabel(name)
     plt.title(name)
     plt.savefig(path)
-    
+
 
 def initialize_loggers(cfg, timestamp):
     logging_directory = cfg.logging_directory
@@ -291,9 +277,12 @@ def main(cfg: DictConfig):
             config = LoraConfig(**cfg.lora_config)
             model = get_peft_model(model, config).to(device)
 
-            trainable_params, all_params = model.get_nb_trainable_parameters()
-            percentage = trainable_params / all_params
-            logger.info(f"Trainable params: {trainable_params} | All params: {all_params} | Trainable%: {percentage:.2f}%")
+            trainable_parameters = model.get_nb_trainable_parameters()
+            all_parameters = len(model.parameters())
+            percentage = all_parameters / trainable_parameters
+            logger.info(
+                f"Trainable params: {trainable_parameters} | All params: {all_parameters} | Trainable%: {percentage}"
+            )
 
         return model
 
@@ -341,7 +330,7 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorCTCWithPadding(processor=processor),
-            timestamp=timestamp
+            timestamp=timestamp,
         )
         if architecture == "ctc"
         else create_seq2seq_trainer(
@@ -352,16 +341,14 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
-            timestamp=timestamp
+            timestamp=timestamp,
         )
     )
 
     # Calculating previous WER scores
-    pre_wer_ortho, pre_cer_portho, pre_wer, pre_cer, pre_rtfx = inference(
-        model, processor, latex_normalizer, test, architecture
-    )
+    pre_metrics = inference(model, processor, latex_normalizer, test, architecture)
     logger.info(
-        f"Previous Results - WER: {pre_wer:.4f}, CER: {pre_cer:.4f}, RTFX: {pre_rtfx:.2f}"
+        f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
     )
 
     # Deleting pre-evaluation model and clearing cache
@@ -372,7 +359,7 @@ def main(cfg: DictConfig):
     if cfg.get("use_hyperparameter_search", False):
         n_trials = cfg.get("n_trials", 10)
         logger.info(f"Starting Optuna search with {n_trials} trials...")
-    
+
         best_run = trainer.hyperparameter_search(
             hp_space=hp_space,
             compute_objective=compute_objective,
@@ -380,10 +367,10 @@ def main(cfg: DictConfig):
             backend="optuna",
             n_trials=n_trials,
         )
-    
+
         logger.info("------- Best Hyperparameters Found -------")
         logger.info(best_run)
-    
+
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
@@ -398,18 +385,18 @@ def main(cfg: DictConfig):
     valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
-    
+
     # Saving model
     model_directory = cfg.model_directory
     trainer.save_model(os.path.join(model_directory, timestamp))
 
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
-    post_wer_ortho, post_cer_ortho, post_wer, post_cer, post_rtfx = inference(
+    post_metrics = inference(
         trainer.model, processor, latex_normalizer, test, architecture
     )
     logger.info(
-        f"Test Results - WER: {post_wer:.4f}, CER: {post_cer:.4f}, RTFX: {post_rtfx:.2f}"
+        f"Previous Results - {' - '.join(f'{metric}: {post_metrics[metric]:.2f}' for metric in post_metrics)}"
     )
 
 
