@@ -1,0 +1,19 @@
+# @package _global_
+architecture: seq2seq
+
+model_name: "whisper-small"
+
+model:
+  _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
+  _partial_: true
+  pretrained_model_name_or_path: "openai/whisper-small"
+  attn_implementation: "sdpa"
+
+processor:
+  _target_: transformers.AutoProcessor.from_pretrained
+  pretrained_model_name_or_path: "openai/whisper-small"
+  language: "English"
+  task: "transcribe"
+
+normalizer:
+  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer

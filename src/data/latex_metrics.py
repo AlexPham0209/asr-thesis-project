@@ -31,8 +31,8 @@ class LatexInContextMetrics:
         predictions_normalized = None
         references_normalized = None
         if normalizer:
-            predictions_normalized = [self.normalizer(x) for x in predictions]
-            references_normalized = [self.normalizer(x) for x in references]
+            predictions_normalized = [normalizer(x) for x in predictions]
+            references_normalized = [normalizer(x) for x in references]
 
         result = {}
 
@@ -61,7 +61,7 @@ class LatexInContextMetrics:
 
         if normalizer:
             result["cer_normalized"] = self.cer.compute(
-                predictions=predictions_lower, references=references_lower
+                predictions=predictions_normalized, references=references_normalized
             )
 
         # Other metrics
@@ -113,8 +113,7 @@ class LatexInContextMetrics:
         )
 
         if normalize:
-            normalizer = NormalizeFormula()
-            normalized_formulas = normalizer(formulas_content_list)
+            normalized_formulas = self.equation_normalizer(formulas_content_list)
             invalid_count = sum(1 for x in normalized_formulas if x == "")
 
             metrics["invalid_latex"] = invalid_count / len(formulas_content_list)

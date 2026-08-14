@@ -16,7 +16,7 @@ training:
   generation_max_length: 300
   
   eval_strategy: "steps"
-  eval_steps: 250
+  eval_steps: 10
   
   save_strategy: "steps"
   save_steps: 250
