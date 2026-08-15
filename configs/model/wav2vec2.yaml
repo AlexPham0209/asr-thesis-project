@@ -1,18 +1,18 @@
 # @package _global_
-architecture: ctc
+architecture: seq2seq
 
 model:
-  _target_: transformers.AutoModelForCTC.from_pretrained
-  pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
+  _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
+  _partial_: true
+  pretrained_model_name_or_path: "openai/whisper-tiny"
 
-  # You can add model-specific keyword arguments here
-  ctc_loss_reduction: "mean"
-
-# Keep processor configuration alongside the model
 processor:
   _target_: transformers.AutoProcessor.from_pretrained
-  pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
+  pretrained_model_name_or_path: "openai/whisper-tiny"
+  language: "English"
+  task: "transcribe"
 
 normalizer:
-  _target_: data.normalizer.normalize_wav2vec2
-  _partial_: true
+  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer# @package _global_
+architecture: ctc
+

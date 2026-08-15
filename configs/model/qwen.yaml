@@ -1,0 +1,11 @@
+# @package _global_
+
+model:
+  _target_: transformers.AutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+  device_map: "auto"
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+    

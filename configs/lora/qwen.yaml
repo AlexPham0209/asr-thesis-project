@@ -1,0 +1,17 @@
+# @package _global_
+
+lora_config: 
+  r: 16 
+  lora_alpha: 32  
+  target_modules: [
+    "q_proj",
+    "v_proj",
+    "k_proj",
+    "out_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+  ]  
+  lora_dropout: 0.05 
+  bias: "none" 
+  task_type: "CAUSAL_LM"

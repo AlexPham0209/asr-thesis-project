@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 import time
-from data.latex_metrics import LatexInContextMetrics
+from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf

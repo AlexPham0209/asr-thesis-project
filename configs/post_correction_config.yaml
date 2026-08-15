@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - model: llama   
+  - dataset: speech2latex_llm    
+  - training: sft
+  - lora: qwen
+  - _self_
+
+logging_directory: logs
+model_directory: models
+results_directory: results
+
+# Misc. Settings
+normalize_during_preprocessing: false
+use_lora: true
+use_hyperparameter_search: false

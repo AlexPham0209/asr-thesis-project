@@ -62,7 +62,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer):
         # Extract raw audio arrays from the nested 'audio' dictionary column
         samples = batch["audio_path"].get_all_samples()
         audio = samples.data.squeeze(dim=0)
-        
+
         text = batch["sentence"]
         if normalizer:
             text = normalizer(text)

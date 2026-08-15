@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 import time
-from data.latex_metrics import LatexInContextMetrics
+from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -30,14 +30,16 @@ from data.data_collator import (
     DataCollatorSpeechSeq2SeqWithPadding,
 )
 
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-
 import logging
 from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
 import warnings
 import matplotlib.pyplot as plt
+from trl import SFTTrainer, SFTConfig
+import functools
+import trl
 
+# trl.trainer.sft_trainer._patch_chunked_ce_lm_head = lambda *args, **kwargs: None
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -67,7 +69,7 @@ def inference(model, tokenizer, normalizer, dataset):
 
     model.eval()
     for sample in dataset:
-        input_text = sample["prompt"] 
+        input_text = sample["input"] 
         label_text = sample["label"]
 
         inputs = tokenizer(input_text, return_tensors="pt").to(device)
@@ -148,7 +150,7 @@ def initialize_loggers(cfg, timestamp):
     hf_logging.set_verbosity_info()
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="asr_config")
+@hydra.main(version_base=None, config_path="../configs", config_name="post_correction_config")
 def main(cfg: DictConfig):
     # Creating loggers
     now = datetime.now()
@@ -175,16 +177,18 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model).to(device)
+        model = hydra.utils.instantiate(cfg.model)
         return model
 
-    architecture = cfg.architecture
-    tokenizer = hydra.utils.instantiate(cfg.tokenizer)
     model = model_init(None)
+    tokenizer = hydra.utils.instantiate(cfg.tokenizer)
     normalizer = (
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     )
     latex_normalizer = create_latex_normalizer(normalizer=normalizer)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
@@ -202,50 +206,66 @@ def main(cfg: DictConfig):
     preprocess_fn = hydra.utils.instantiate(
         cfg.preprocess,
         tokenizer=tokenizer,
-        architecture=architecture,
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
     train = preprocess_fn(train)
-    valid = preprocess_fn(valid)
     test = preprocess_fn(test)
-
-    
     lora_config = LoraConfig(**cfg.lora_config) if cfg.get("use_lora", False) and cfg.get("lora_config") else None
 
     # Creating metrics
     compute_metrics = create_metric(processor=tokenizer, normalizer=latex_normalizer)
-    response_template = "<|im_start|>assistant\n"
-
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template=response_template, 
-        tokenizer=tokenizer
+    
+    llama_3_training_template = (
+        "{{ bos_token }}"
+        "{% for message in messages %}"
+            "{% if message['role'] == 'system' %}"
+                "{{ '<|start_header_id|>system<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
+            "{% elif message['role'] == 'user' %}"
+                "{{ '<|start_header_id|>user<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
+            "{% elif message['role'] == 'assistant' %}"
+                "{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}"
+                "{% generation %}"
+                "{{ message['content'] + '<|eot_id|>' }}"
+                "{% endgeneration %}"
+            "{% endif %}"
+        "{% endfor %}"
+        "{% if add_generation_prompt %}"
+            "{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}"
+        "{% endif %}"
     )
 
-    training_args = TrainingArguments(
+    tokenizer.chat_template = llama_3_training_template
+
+    training_args = SFTConfig(
         **cfg.training, 
+        max_length=512,
+        dataset_text_field="messages",
+        assistant_only_loss=True,
+        loss_type="nll",
+        bf16=torch.cuda.is_bf16_supported(),
+        fp16=not torch.cuda.is_bf16_supported(),
     )
 
     # Creating trainer
     trainer = SFTTrainer(
-        model=model_init,
-        dataset_text_field="text",
+        model=model,
         args=training_args,
         train_dataset=train,
-        eval_dataset=valid,
-        data_collator=collator,
-        max_seq_length=512, 
-        lora_config=lora_config
+        eval_dataset=test,
+        peft_config=lora_config,
+        compute_metrics=compute_metrics,
+        processing_class=tokenizer,
     )
 
     # Calculating previous WER scores
-    pre_metrics = inference(model, tokenizer, latex_normalizer, test)
-    logger.info(
-        f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
-    )
+    # pre_metrics = inference(model, tokenizer, latex_normalizer, test)
+    # logger.info(
+    #     f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
+    # )
 
     # Deleting pre-evaluation model and clearing cache
-    del model
-    torch.cuda.empty_cache()
+    # del model
+    # torch.cuda.empty_cache()
 
     # Execute hyperparameter search
     if cfg.get("use_hyperparameter_search", False):

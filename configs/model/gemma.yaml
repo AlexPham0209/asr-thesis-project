@@ -1,0 +1,12 @@
+# @package _global_
+
+model:
+  _target_: transformers.AutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: "google/gemma-4-E2B-it"
+  device_map: "auto"
+  attn_implementation: "sdpa"
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: "google/gemma-4-E2B-it"
+    

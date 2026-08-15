@@ -1,4 +1,4 @@
-from data.latex_metrics import LatexInContextMetrics
+from utils.latex_metrics import LatexInContextMetrics
 import torch
 
 
@@ -25,4 +25,3 @@ def create_metric(processor, normalizer=None):
         return result
 
     return compute_metrics
-
