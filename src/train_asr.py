@@ -115,7 +115,7 @@ def inference(model, processor, normalizer, dataset, architecture):
     labels = []
     rtfxs = []
 
-    for sample in dataset.take(10):
+    for sample in dataset:
         key = "input_values" if architecture == "ctc" else "input_features"
         input_features = sample[key]
 
@@ -165,16 +165,6 @@ def inference(model, processor, normalizer, dataset, architecture):
     metrics = LatexInContextMetrics(text_normalizer=normalizer)
     result = metrics.compute_all(predictions=predictions, references=labels)
     return result
-
-
-def create_diagrams(history, cfg):
-    loss = [entry["eval_loss"] for entry in history]
-    ortho_wer = [entry["eval_ortho_wer"] for entry in history]
-    ortho_cer = [entry["eval_ortho_cer"] for entry in history]
-    wer = [entry["eval_wer"] for entry in history]
-    cer = [entry["eval_cer"] for entry in history]
-
-    create_diagram("Loss", loss, cfg)
 
 
 def create_diagram(points, name, path):
@@ -379,7 +369,6 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-    create_diagrams(trainer.state.log_history, cfg)
 
     # Evaluate using the validation dataset
     valid_metrics = trainer.evaluate()

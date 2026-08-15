@@ -68,7 +68,7 @@ def inference(model, tokenizer, normalizer, dataset):
     model.eval()
     for sample in dataset:
         input_text = sample["prompt"] 
-        label_text = sample["text"]
+        label_text = sample["label"]
 
         inputs = tokenizer(input_text, return_tensors="pt").to(device)
 

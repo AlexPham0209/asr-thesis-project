@@ -1,4 +1,5 @@
 from data.normalizer import contains_equation, has_valid_equation
+from transformers import AutoTokenizer
 
 
 def create_messages(text, label=None):
@@ -37,6 +38,7 @@ def preprocess_speech2latex(dataset, tokenizer, normalizer):
         full_messages = create_messages(text=text, label=label)
         batch["text"] = tokenizer.apply_chat_template(full_messages, tokenize=False)
         batch["prompt"] = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        batch["label"] = label
 
         return batch
 
