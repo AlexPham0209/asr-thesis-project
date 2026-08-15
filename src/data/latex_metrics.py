@@ -96,7 +96,7 @@ class LatexInContextMetrics:
 
         return result
 
-    def compute_formulas_only(self, predictions, references, normalize=False):
+    def compute_formulas_only(self, predictions, references):
         """
         Extracts all formulas from predictions and references,
         concatenate all formulas. And computes metrics for formulas-only string.
@@ -109,10 +109,9 @@ class LatexInContextMetrics:
         metrics = self.compute(
             prediction_formulas_only,
             references_formulas_only,
-            normalizer=self.equation_normalizer,
         )
 
-        if normalize:
+        if self.equation_normalizer:
             normalized_formulas = self.equation_normalizer(formulas_content_list)
             invalid_count = sum(1 for x in normalized_formulas if x == "")
 
@@ -179,12 +178,10 @@ class LatexInContextMetrics:
         if isinstance(references, str):
             references = [references]
 
-        metrics = self.compute(predictions, references)
+        metrics = self.compute(predictions, references, self.text_normalizer)
 
         if compute_formulas_only:
-            metrics_formulas_only = self.compute_formulas_only(
-                predictions, references, normalize=normalize
-            )
+            metrics_formulas_only = self.compute_formulas_only(predictions, references)
             for k, v in metrics_formulas_only.items():
                 metrics["formula_" + k] = v
 
@@ -194,10 +191,3 @@ class LatexInContextMetrics:
                 metrics["text_" + k] = v
 
         return metrics
-
-
-print(
-    LatexInContextMetrics().compute_all(
-        "Hello $5x + 1$ there $5 + 2$", "Hello $5x + 1$ There $5 + 2$"
-    )
-)

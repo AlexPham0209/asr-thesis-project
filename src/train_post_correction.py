@@ -30,6 +30,8 @@ from data.data_collator import (
     DataCollatorSpeechSeq2SeqWithPadding,
 )
 
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+
 import logging
 from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
@@ -39,54 +41,6 @@ import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def create_seq2seq_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
-):
-    model_path = os.path.join(
-        cfg.model_directory, f"{cfg.get('model_name', 'model')}_{timestamp}"
-    )
-    training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_path)
-
-    trainer = Seq2SeqTrainer(
-        args=training_args,
-        model_init=model,
-        train_dataset=train,
-        eval_dataset=valid,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics,
-        processing_class=processor,
-        callbacks=[CustomLoggingCallback(logger)],
-    )
-
-    return trainer
-
-
-def create_ctc_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
-):
-    model_path = os.path.join(cfg.model_directory, model.config._name_or_path)
-    training_args = TrainingArguments(**cfg.training, output_dir=model_path)
-
-    trainer = Trainer(
-        model_init=model,
-        data_collator=data_collator,
-        args=training_args,
-        train_dataset=train,
-        eval_dataset=valid,
-        processing_class=processor,
-        compute_metrics=compute_metrics,
-        callbacks=[CustomLoggingCallback(logger)],
-    )
-
-    return trainer
-
-
-def create_custom_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator
-):
-    pass
 
 
 def compute_objective(metrics):
@@ -106,75 +60,34 @@ def hp_space(trial):
     }
 
 
-def inference(model, processor, normalizer, dataset, architecture):
-    # Metrics
-    wer = evaluate.load("wer")
-    cer = evaluate.load("cer")
-
+def inference(model, tokenizer, normalizer, dataset):
+    """Inference loop specifically for LLM Text-to-Text Post-Correction."""
     predictions = []
     labels = []
-    rtfxs = []
 
-    for sample in dataset.take(10):
-        key = "input_values" if architecture == "ctc" else "input_features"
-        input_features = sample[key]
+    model.eval()
+    for sample in dataset:
+        input_text = sample["prompt"] 
+        label_text = sample["text"]
 
-        # Ensure tensor type
-        if not isinstance(input_features, torch.Tensor):
-            input_features = torch.tensor(input_features)
+        inputs = tokenizer(input_text, return_tensors="pt").to(device)
 
-        # Move inputs to the correct device and add a batch dimension
-        input_features = input_features.unsqueeze(dim=0).to(device)
-
-        start_time = time.perf_counter()
         with torch.no_grad():
-            if architecture == "ctc":
-                logits = model(input_features).logits
-                predicted_ids = torch.argmax(logits, dim=-1)
-            else:
-                predicted_ids = model.generate(input_features=input_features)
+            generated_ids = model.generate(
+                **inputs, 
+                max_new_tokens=256,
+                pad_token_id=tokenizer.pad_token_id
+            )
 
-        end_time = time.perf_counter()
+        # Strip input prompt tokens from output
+        generated_ids = generated_ids[:, inputs.input_ids.shape[-1]:]
+        pred_str = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-        label_ids = sample["labels"]
-        if not isinstance(label_ids, torch.Tensor):
-            label_ids = torch.tensor(label_ids)
-
-        # Replace -100 padding tokens with pad_token_id
-        pad_token_id = (
-            getattr(processor, "pad_token_id", None) or processor.tokenizer.pad_token_id
-        )
-        label_ids = torch.where(label_ids != -100, label_ids, pad_token_id)
-
-        label_ids = label_ids.unsqueeze(0)
-
-        # Decoding prediction and labels
-        pred_str = processor.batch_decode(predicted_ids, skip_special_tokens=True)
-        label_str = processor.batch_decode(
-            label_ids, skip_special_tokens=True, group_tokens=False
-        )
-
-        audio_duration = sample["input_length"]
-        processing_time = end_time - start_time
-        rtfx = audio_duration / processing_time
-
-        predictions.extend(pred_str)
-        labels.extend(label_str)
-        rtfxs.append(rtfx)
+        predictions.append(pred_str)
+        labels.append(label_text)
 
     metrics = LatexInContextMetrics(text_normalizer=normalizer)
-    result = metrics.compute_all(predictions=predictions, references=labels)
-    return result
-
-
-def create_diagrams(history, cfg):
-    loss = [entry["eval_loss"] for entry in history]
-    ortho_wer = [entry["eval_ortho_wer"] for entry in history]
-    ortho_cer = [entry["eval_ortho_cer"] for entry in history]
-    wer = [entry["eval_wer"] for entry in history]
-    cer = [entry["eval_cer"] for entry in history]
-
-    create_diagram("Loss", loss, cfg)
+    return metrics.compute_all(predictions=predictions, references=labels)
 
 
 def create_diagram(points, name, path):
@@ -235,7 +148,7 @@ def initialize_loggers(cfg, timestamp):
     hf_logging.set_verbosity_info()
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
+@hydra.main(version_base=None, config_path="../configs", config_name="asr_config")
 def main(cfg: DictConfig):
     # Creating loggers
     now = datetime.now()
@@ -253,41 +166,20 @@ def main(cfg: DictConfig):
     logger.info("------- Model Configurations -------")
     logger.info(f"{cfg.model}\n")
 
-    if not cfg.get("processor"):
+    if not cfg.get("tokenizer"):
         raise ValueError("Missing 'model' configuration block in your YAML")
 
-    logger.info(f"{cfg.processor}\n")
+    logger.info(f"{cfg.tokenizer}\n")
 
     logger.info("------- Instantiating Model from Configuration -------")
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model)
-        model = model(
-            pad_token_id=processor.tokenizer.pad_token_id,
-            vocab_size=len(processor.tokenizer),
-        ).to(device)
-
-        if hasattr(model, "config"):
-            model.config.forced_decoder_ids = None
-            model.config.suppress_tokens = []
-            model.config.use_cache = False
-
-        if cfg.get("use_lora", False) and cfg.get("lora_config"):
-            config = LoraConfig(**cfg.lora_config)
-            model = get_peft_model(model, config).to(device)
-
-            trainable_parameters = model.get_nb_trainable_parameters()
-            all_parameters = len(model.parameters())
-            percentage = all_parameters / trainable_parameters
-            logger.info(
-                f"Trainable params: {trainable_parameters} | All params: {all_parameters} | Trainable%: {percentage}"
-            )
-
+        model = hydra.utils.instantiate(cfg.model).to(device)
         return model
 
     architecture = cfg.architecture
-    processor = hydra.utils.instantiate(cfg.processor)
+    tokenizer = hydra.utils.instantiate(cfg.tokenizer)
     model = model_init(None)
     normalizer = (
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
@@ -309,7 +201,7 @@ def main(cfg: DictConfig):
     normalize_during_preprocessing = cfg.get("normalize_during_preprocessing", False)
     preprocess_fn = hydra.utils.instantiate(
         cfg.preprocess,
-        processor=processor,
+        tokenizer=tokenizer,
         architecture=architecture,
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
@@ -317,36 +209,36 @@ def main(cfg: DictConfig):
     valid = preprocess_fn(valid)
     test = preprocess_fn(test)
 
+    
+    lora_config = LoraConfig(**cfg.lora_config) if cfg.get("use_lora", False) and cfg.get("lora_config") else None
+
     # Creating metrics
-    compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
+    compute_metrics = create_metric(processor=tokenizer, normalizer=latex_normalizer)
+    response_template = "<|im_start|>assistant\n"
+
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template=response_template, 
+        tokenizer=tokenizer
+    )
+
+    training_args = TrainingArguments(
+        **cfg.training, 
+    )
 
     # Creating trainer
-    trainer = (
-        create_ctc_trainer(
-            cfg=cfg,
-            model=model_init,
-            processor=processor,
-            train=train,
-            valid=valid,
-            compute_metrics=compute_metrics,
-            data_collator=DataCollatorCTCWithPadding(processor=processor),
-            timestamp=timestamp,
-        )
-        if architecture == "ctc"
-        else create_seq2seq_trainer(
-            cfg=cfg,
-            model=model_init,
-            processor=processor,
-            train=train,
-            valid=valid,
-            compute_metrics=compute_metrics,
-            data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
-            timestamp=timestamp,
-        )
+    trainer = SFTTrainer(
+        model=model_init,
+        dataset_text_field="text",
+        args=training_args,
+        train_dataset=train,
+        eval_dataset=valid,
+        data_collator=collator,
+        max_seq_length=512, 
+        lora_config=lora_config
     )
 
     # Calculating previous WER scores
-    pre_metrics = inference(model, processor, latex_normalizer, test, architecture)
+    pre_metrics = inference(model, tokenizer, latex_normalizer, test)
     logger.info(
         f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
     )
@@ -379,7 +271,6 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-    create_diagrams(trainer.state.log_history, cfg)
 
     # Evaluate using the validation dataset
     valid_metrics = trainer.evaluate()
@@ -393,7 +284,7 @@ def main(cfg: DictConfig):
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
     post_metrics = inference(
-        trainer.model, processor, latex_normalizer, test, architecture
+        trainer.model, tokenizer, latex_normalizer, test
     )
     logger.info(
         f"Previous Results - {' - '.join(f'{metric}: {post_metrics[metric]:.2f}' for metric in post_metrics)}"
