@@ -13,13 +13,13 @@ training:
   eval_accumulation_steps: 10
     
   eval_strategy: "steps"
-  eval_steps: 250
+  eval_steps: 10
   
   save_strategy: "steps"
-  save_steps: 250
+  save_steps: 10
 
   logging_strategy: "steps"
-  logging_steps: 250
+  logging_steps: 10
   report_to: tensorboard
   
   load_best_model_at_end: True

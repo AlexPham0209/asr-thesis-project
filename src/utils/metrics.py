@@ -35,15 +35,27 @@ def create_metric(processor, normalizer=None):
 
 # Curried function for evaluating metrics
 def create_llm_metric(tokenizer, normalizer=None):
-    def compute_metrics(pred):
-        pred_ids, label_ids = pred.predictions, pred.label_ids
-
-        pred_ids = np.where(pred_ids != -100, pred_ids, tokenizer.pad_token_id)
-        label_ids = np.where(label_ids != -100, label_ids, tokenizer.pad_token_id)
+    def compute_metrics(eval_preds):
+        pred_ids, label_ids = eval_preds
         
-        pred_str = tokenizer.batch_decode(pred_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-        label_str = tokenizer.batch_decode(label_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+        pred_ids = pred_ids[..., :-1]
+        label_ids = label_ids[..., 1:]
 
+        preds = []
+        labels = []
+
+        for pred, label in zip(pred_ids, label_ids):
+            mask = label != -100
+            
+            preds.append(pred[mask])
+            labels.append(label[mask])
+        
+        pred_str = tokenizer.batch_decode(preds, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+        label_str = tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+        logger.info(f"Prediction: {pred_str[0]}")
+        logger.info(f"Label: {label_str[0]}\n")
+        
         metrics = LatexInContextMetrics(text_normalizer=normalizer)
         result = metrics.compute_all(pred_str, label_str)
         return result
