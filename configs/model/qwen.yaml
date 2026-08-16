@@ -1,5 +1,7 @@
 # @package _global_
 
+model_name: "Qwen2.5-0.5B-Instruct"
+
 model:
   _target_: transformers.AutoModelForCausalLM.from_pretrained
   pretrained_model_name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"

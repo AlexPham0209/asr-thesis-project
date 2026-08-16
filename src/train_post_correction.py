@@ -23,7 +23,11 @@ from hydra.utils import instantiate
 from datasets import load_dataset
 from data.normalizer import create_latex_normalizer
 from utils.logger import CustomLoggingCallback
-from utils.metrics import create_metric
+from utils.metrics import ( 
+    create_metric,
+    create_llm_metric,
+    preprocess_logits_for_metrics
+)
 
 from data.data_collator import (
     DataCollatorCTCWithPadding,
@@ -69,25 +73,24 @@ def inference(model, tokenizer, normalizer, dataset):
 
     model.eval()
     for sample in dataset:
-        input_text = sample["input"] 
+        input_text = sample["input"]
         label_text = sample["label"]
 
         inputs = tokenizer(input_text, return_tensors="pt").to(device)
 
         with torch.no_grad():
             generated_ids = model.generate(
-                **inputs, 
-                max_new_tokens=256,
-                pad_token_id=tokenizer.pad_token_id
+                **inputs, max_new_tokens=256, pad_token_id=tokenizer.pad_token_id
             )
 
         # Strip input prompt tokens from output
-        generated_ids = generated_ids[:, inputs.input_ids.shape[-1]:]
+        generated_ids = generated_ids[:, inputs.input_ids.shape[-1] :]
         pred_str = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
         predictions.append(pred_str)
         labels.append(label_text)
 
+    model.train()
     metrics = LatexInContextMetrics(text_normalizer=normalizer)
     return metrics.compute_all(predictions=predictions, references=labels)
 
@@ -150,7 +153,9 @@ def initialize_loggers(cfg, timestamp):
     hf_logging.set_verbosity_info()
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="post_correction_config")
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="post_correction_config"
+)
 def main(cfg: DictConfig):
     # Creating loggers
     now = datetime.now()
@@ -187,9 +192,6 @@ def main(cfg: DictConfig):
     )
     latex_normalizer = create_latex_normalizer(normalizer=normalizer)
 
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
         raise ValueError("Missing 'data' configutation block in your YAML")
@@ -210,40 +212,29 @@ def main(cfg: DictConfig):
     )
     train = preprocess_fn(train)
     test = preprocess_fn(test)
-    lora_config = LoraConfig(**cfg.lora_config) if cfg.get("use_lora", False) and cfg.get("lora_config") else None
 
-    # Creating metrics
-    compute_metrics = create_metric(processor=tokenizer, normalizer=latex_normalizer)
-    
-    llama_3_training_template = (
-        "{{ bos_token }}"
-        "{% for message in messages %}"
-            "{% if message['role'] == 'system' %}"
-                "{{ '<|start_header_id|>system<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
-            "{% elif message['role'] == 'user' %}"
-                "{{ '<|start_header_id|>user<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
-            "{% elif message['role'] == 'assistant' %}"
-                "{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}"
-                "{% generation %}"
-                "{{ message['content'] + '<|eot_id|>' }}"
-                "{% endgeneration %}"
-            "{% endif %}"
-        "{% endfor %}"
-        "{% if add_generation_prompt %}"
-            "{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}"
-        "{% endif %}"
+    lora_config = (
+        LoraConfig(**OmegaConf.to_container(cfg.lora_config, resolve=True))
+        if cfg.get("use_lora", False) and cfg.get("lora_config")
+        else None
     )
 
-    tokenizer.chat_template = llama_3_training_template
+    # Creating metrics
+    compute_metrics = create_llm_metric(tokenizer=tokenizer, normalizer=latex_normalizer)
+
+    model_path = os.path.join(
+        cfg.model_directory, f"{cfg.get('model_name', 'model')}"
+    )
 
     training_args = SFTConfig(
-        **cfg.training, 
+        **cfg.training,
         max_length=512,
         dataset_text_field="messages",
         assistant_only_loss=True,
         loss_type="nll",
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
+        output_dir=model_path,
     )
 
     # Creating trainer
@@ -255,6 +246,7 @@ def main(cfg: DictConfig):
         peft_config=lora_config,
         compute_metrics=compute_metrics,
         processing_class=tokenizer,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics
     )
 
     # Calculating previous WER scores
@@ -303,9 +295,7 @@ def main(cfg: DictConfig):
 
     # Evaluating finetuned model on test dataset
     logger.info("------- Evaluating Best Model on Test Dataset -------")
-    post_metrics = inference(
-        trainer.model, tokenizer, latex_normalizer, test
-    )
+    post_metrics = inference(trainer.model, tokenizer, latex_normalizer, test)
     logger.info(
         f"Previous Results - {' - '.join(f'{metric}: {post_metrics[metric]:.2f}' for metric in post_metrics)}"
     )

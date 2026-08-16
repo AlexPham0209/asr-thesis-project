@@ -13,6 +13,5 @@ processor:
   task: "transcribe"
 
 normalizer:
-  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer# @package _global_
-architecture: ctc
+  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer# 
 

@@ -42,9 +42,7 @@ def preprocess_speech2latex(dataset, tokenizer, normalizer):
         full_messages = create_messages(text=text, label=label)
 
         batch["messages"] = full_messages
-        batch["text"] = tokenizer.apply_chat_template(
-            full_messages, tokenize=False
-        )
+        batch["text"] = tokenizer.apply_chat_template(full_messages, tokenize=False)
         batch["input"] = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )

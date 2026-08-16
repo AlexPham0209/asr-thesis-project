@@ -1,12 +1,11 @@
 # @package _global_
 
+model_name: "Llama-3.2-1B-Instruct"
+
 model:
   _target_: transformers.AutoModelForCausalLM.from_pretrained
   pretrained_model_name_or_path: "meta-llama/Llama-3.2-1B-Instruct"
   trust_remote_code: True
 
 tokenizer:
-  _target_: transformers.AutoTokenizer.from_pretrained
-  pretrained_model_name_or_path: "meta-llama/Llama-3.2-1B-Instruct"
-  trust_remote_code: True
-    
+  _target_: utils.tokenizer.create_llama3_tokenizer

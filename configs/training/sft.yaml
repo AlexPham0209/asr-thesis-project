@@ -1,16 +1,16 @@
 # @package _global_
 
 training:
-  per_device_train_batch_size: 8
-  gradient_accumulation_steps: 4  # increase by 2x for every 2x decrease in batch size
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8  # increase by 2x for every 2x decrease in batch size
   learning_rate: 1e-4
   max_steps: 10000
   lr_scheduler_type: "linear"
   warmup_steps: 50
   gradient_checkpointing: True
 
-  per_device_eval_batch_size: 2
-  eval_accumulation_steps: 1
+  per_device_eval_batch_size: 1
+  eval_accumulation_steps: 10
     
   eval_strategy: "steps"
   eval_steps: 250
@@ -23,7 +23,7 @@ training:
   report_to: tensorboard
   
   load_best_model_at_end: True
-  metric_for_best_model: "wer"
+  metric_for_best_model: "cer"
   greater_is_better: False
   push_to_hub: False
 

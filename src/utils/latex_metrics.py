@@ -30,10 +30,11 @@ class LatexInContextMetrics:
         # Normalized text
         predictions_normalized = None
         references_normalized = None
-        if normalizer:
-            predictions_normalized = [normalizer(x) for x in predictions]
-            references_normalized = [normalizer(x) for x in references]
 
+        # if normalizer is not None and callable(normalizer):
+        #     predictions_normalized = [normalizer(x) for x in predictions]
+        #     references_normalized = [normalizer(x) for x in references]
+        
         result = {}
 
         # Word Error Rate
@@ -44,10 +45,10 @@ class LatexInContextMetrics:
             result["wer_lower"] = self.wer.compute(
                 predictions=predictions_lower, references=references_lower
             )
-            if normalizer:
-                result["wer_normalized"] = self.wer.compute(
-                    predictions=predictions_normalized, references=references_normalized
-                )
+            # if normalizer:
+            #     result["wer_normalized"] = self.wer.compute(
+            #         predictions=predictions_normalized, references=references_normalized
+            #     )
         except Exception as e:
             logger.error(f"Error computing wer: {e}")
             result["wer"] = -1
@@ -59,10 +60,10 @@ class LatexInContextMetrics:
             predictions=predictions_lower, references=references_lower
         )
 
-        if normalizer:
-            result["cer_normalized"] = self.cer.compute(
-                predictions=predictions_normalized, references=references_normalized
-            )
+        # if normalizer:
+        #     result["cer_normalized"] = self.cer.compute(
+        #         predictions=predictions_normalized, references=references_normalized
+        #     )
 
         # Other metrics
         result["bleu"] = self.bleu.compute(
