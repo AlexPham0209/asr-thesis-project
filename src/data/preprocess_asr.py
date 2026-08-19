@@ -81,7 +81,6 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
             sampling_rate=target_sampling_rate,
             text=texts,
             return_tensors="pt",
-            padding=True,
         )
 
         # Calculate input lengths safely from the audio list before batch remapping
