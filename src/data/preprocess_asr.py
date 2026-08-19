@@ -39,52 +39,66 @@ def preprocess(dataset, processor, architecture, normalizer):
     return dataset
 
 
-def preprocess_speech2latex(dataset, processor, architecture, normalizer):
-    input_key = "input_values" if architecture == "ctc" else "input_features"
+def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     target_sampling_rate = processor.feature_extractor.sampling_rate
+
+    # 1. Cast audio column for auto-decoding
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
-    dataset = dataset.filter(lambda sample: sample["language"] == "eng", num_proc=10)
-    dataset = dataset.filter(
-        lambda sample: has_valid_equation(sample["sentence"]), num_proc=10
-    )
-    dataset = dataset.filter(
-        lambda sample: contains_equation(sample["sentence"]), num_proc=10
-    )
-    dataset = dataset.filter(
-        lambda sample: (
-            sample["audio_path"].get_all_samples().data.ndim == 2
-            and sample["audio_path"].get_all_samples().data.shape[0] == 1
-        ),
-        num_proc=10,
-    )
 
+    # 2. Combine all filtering into a SINGLE pass for high efficiency
+    def combined_filter(sample):
+        # Language check
+        if sample["language"] != "eng":
+            return False
+
+        # Equation quality checks
+        text = sample["sentence"]
+        if not (contains_equation(text) and has_valid_equation(text)):
+            return False
+
+        # Single-channel check (HF datasets loads audio as 1D numpy array shape (N,) for mono)
+        # Multi-channel arrays would have ndim == 2
+        audio_data = sample["audio_path"].get_all_samples().data
+        if audio_data.ndim != 1:
+            return False
+
+        return True
+
+    dataset = dataset.filter(combined_filter, num_proc=10)
+
+    # 3. Corrected and vectorized batched mapping
     def preprocess(batch):
-        # Extract raw audio arrays from the nested 'audio' dictionary column
-        samples = batch["audio_path"].get_all_samples()
-        audio = samples.data.squeeze(dim=0)
+        # Extract audio arrays directly from Hugging Face's pre-decoded structures
+        audio_list = [sample.get_all_samples().data for sample in batch["audio_path"]]
+        texts = batch["sentence"]
 
-        text = batch["sentence"]
         if normalizer:
-            text = normalizer(text)
+            texts = [normalizer(text) for text in texts]
 
-        # Process the audio to generate 'input_features' or 'input_values'
-        batch = processor(
-            audio=audio,
+        # Run HF Processor
+        processed = processor(
+            audio=audio_list,
             sampling_rate=target_sampling_rate,
-            text=text,
+            text=texts,
             return_tensors="pt",
+            padding=True,
         )
 
-        # Remove batch dimension from the input_features and labels
-        batch[input_key] = batch[input_key].squeeze(dim=0)
-        batch["labels"] = batch["labels"].squeeze(dim=0)
+        # Calculate input lengths safely from the audio list before batch remapping
+        # Duration in seconds = length of 1D array / sampling rate
+        processed["input_length"] = [
+            len(arr) / target_sampling_rate for arr in audio_list
+        ]
 
-        # Hugging Face models expect text targets to be named 'labels'
-        batch["input_length"] = audio.size(dim=-1) / samples.sample_rate
+        return processed
 
-        return batch
+    # Map with multiprocessing support
+    dataset = dataset.map(
+        preprocess,
+        remove_columns=dataset.column_names,
+        batched=True,
+        batch_size=64,  # Adjust based on system RAM
+    )
 
-    # Map the preprocessing function across the entire dataset in batches
-    dataset = dataset.map(preprocess, remove_columns=dataset.column_names)
     dataset = dataset.with_format(type="torch")
     return dataset
