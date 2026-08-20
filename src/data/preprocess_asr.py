@@ -69,27 +69,28 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     # 3. Corrected and vectorized batched mapping
     def preprocess(batch):
         # Extract audio arrays directly from Hugging Face's pre-decoded structures
-        audio_list = [sample.get_all_samples().data for sample in batch["audio_path"]]
+        audio_list = [sample.get_all_samples().data.squeeze(dim=0) for sample in batch["audio_path"]]
         texts = batch["sentence"]
 
         if normalizer:
             texts = [normalizer(text) for text in texts]
 
         # Run HF Processor
-        processed = processor(
-            audio=audio_list,
+        model_inputs = processor.feature_extractor(
+            audio_list,
             sampling_rate=target_sampling_rate,
-            text=texts,
-            return_tensors="pt",
+            return_tensors=None,  # Return raw python lists/numpy arrays for variable length dataset saving
         )
 
-        # Calculate input lengths safely from the audio list before batch remapping
-        # Duration in seconds = length of 1D array / sampling rate
-        processed["input_length"] = [
+        # Tokenize labels without padding
+        labels = processor.tokenizer(texts, return_tensors=None).input_ids
+        model_inputs["labels"] = labels
+
+        model_inputs["input_length"] = [
             len(arr) / target_sampling_rate for arr in audio_list
         ]
 
-        return processed
+        return model_inputs
 
     # Map with multiprocessing support
     dataset = dataset.map(

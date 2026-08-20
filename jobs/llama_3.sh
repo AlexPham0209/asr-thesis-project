@@ -4,24 +4,24 @@
 #SBATCH -t 12:00:00
 #SBATCH --gpus=v100-32:4
 
-# Echo commands to stdout for tracking
+# Echo executed commands for debugging
 set -x
 
-# Navigate to project directory
+# Navigate to project root
 cd /ocean/projects/cis250209p/apham8/asr-thesis-project || exit 1
 
-# Safely load and activate environment
+# Load Anaconda and initialize shell hook for non-interactive bash
 module load anaconda3
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate env
 
-# Launch multi-GPU training across all 4 V100s
+# Launch multi-GPU training
 accelerate launch \
     --num_processes=4 \
     --multi_gpu \
-    src/train_asr.py \
-    model=whisper_small \
-    training=seq2seq \
-    lora=whisper \
+    src/train_post_correction.py \
+    model=llama \
+    training=sft \
+    lora=llama \
     use_lora=true \
-    dataset=speech2latex
+    dataset=speech2latex_llm

@@ -20,7 +20,7 @@ class DataCollatorCTCWithPadding:
             {"input_values": feature["input_values"]} for feature in features
         ]
         label_features = [{"input_ids": feature["labels"]} for feature in features]
-
+        
         batch = self.processor.pad(
             input_features, padding=self.padding, return_tensors="pt"
         )
