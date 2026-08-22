@@ -336,12 +336,12 @@ def main(cfg: DictConfig):
     )
 
     # Calculating previous WER scores
-    pre_metrics = inference(model, processor, latex_normalizer, test, architecture)
-    logger.info(
-        f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
-    )
+    # pre_metrics = inference(model, processor, latex_normalizer, test, architecture)
+    # logger.info(
+    #     f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
+    # )
 
-    # Deleting pre-evaluation model and clearing cache
+    # # Deleting pre-evaluation model and clearing cache
     del model
     torch.cuda.empty_cache()
 

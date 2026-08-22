@@ -1,6 +1,8 @@
 from datasets.features import Audio
 from data.normalizer import contains_equation, has_valid_equation
+import logging
 
+logger = logging.getLogger("finetuning")
 
 def preprocess(dataset, processor, architecture, normalizer):
     input_key = "input_values" if architecture == "ctc" else "input_features"
@@ -40,6 +42,7 @@ def preprocess(dataset, processor, architecture, normalizer):
 
 
 def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
+    input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
 
     # 1. Cast audio column for auto-decoding
@@ -59,7 +62,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
         # Single-channel check (HF datasets loads audio as 1D numpy array shape (N,) for mono)
         # Multi-channel arrays would have ndim == 2
         audio_data = sample["audio_path"].get_all_samples().data
-        if audio_data.ndim != 1:
+        if not (audio_data.ndim == 2 and audio_data.shape[0] == 1):
             return False
 
         return True
@@ -69,36 +72,34 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     # 3. Corrected and vectorized batched mapping
     def preprocess(batch):
         # Extract audio arrays directly from Hugging Face's pre-decoded structures
-        audio_list = [sample.get_all_samples().data.squeeze(dim=0) for sample in batch["audio_path"]]
-        texts = batch["sentence"]
+        samples = batch["audio_path"].get_all_samples()
+        audio= samples.data.squeeze(dim=0)
+        text = batch["sentence"]
 
         if normalizer:
-            texts = [normalizer(text) for text in texts]
+            text = normalizer(text)
 
         # Run HF Processor
-        model_inputs = processor.feature_extractor(
-            audio_list,
+        batch = processor(
+            audio=audio,
+            text=text,
             sampling_rate=target_sampling_rate,
-            return_tensors=None,  # Return raw python lists/numpy arrays for variable length dataset saving
+            return_tensors="pt"
         )
 
         # Tokenize labels without padding
-        labels = processor.tokenizer(texts, return_tensors=None).input_ids
-        model_inputs["labels"] = labels
+        batch[input_key] = batch[input_key].squeeze(dim=0)
+        batch["labels"] = batch["labels"].squeeze(dim=0)
+        
+        batch["input_length"] = audio.size(dim=-1) / samples.sample_rate
 
-        model_inputs["input_length"] = [
-            len(arr) / target_sampling_rate for arr in audio_list
-        ]
-
-        return model_inputs
-
+        return batch
+    
     # Map with multiprocessing support
     dataset = dataset.map(
         preprocess,
         remove_columns=dataset.column_names,
-        batched=True,
-        batch_size=64,  # Adjust based on system RAM
+        num_proc=1,
     )
-
-    dataset = dataset.with_format(type="torch")
+    
     return dataset
