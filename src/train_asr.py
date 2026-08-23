@@ -302,8 +302,12 @@ def main(cfg: DictConfig):
     model_name = cfg.get('model_name', 'model')
     model_name_timestamp = f"{model_name}_{timestamp}"
     model_directory = os.path.join(
-        cfg.model_directory, model_name_timestamp
+        cfg.model_directory, model_name
     )
+    
+    # Studies storage folder
+    studies_directory = os.path.join("studies", model_name)
+    os.makedirs(studies_directory, exist_ok=True)
     
     # Creating trainer
     trainer = (
@@ -345,8 +349,8 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
-            study_name=f"{model_name_timestamp}_optuna_study",
-            storage=f"sqlite:///{model_name_timestamp}_optuna_trials.db",
+            study_name=f"{model_name}_optuna_study",
+            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
             load_if_exists=True
         )
@@ -354,16 +358,19 @@ def main(cfg: DictConfig):
         logger.info("------- Best Hyperparameters Found -------")
         logger.info(best_run)
 
-        create_hyperparameter_diagrams(model_name_timestamp, model_directory)
+        create_hyperparameter_diagrams(
+            name=model_name, 
+            model_directory=model_directory, 
+            studies_directory=studies_directory
+        )
 
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
             
         trainer.model = model_init(None)
-    
-    # Training and logging metrics
 
+    # Training model with best run hyperparameters
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)

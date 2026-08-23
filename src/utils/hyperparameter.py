@@ -24,9 +24,9 @@ def hp_space(trial):
     }
     
     
-def create_hyperparameter_diagrams(name: str, model_directory: str):
+def create_hyperparameter_diagrams(name: str, model_directory: str, studies_directory: str):
     # Load the study from RDB storage
-    storage = optuna.storages.RDBStorage(f"sqlite:///{name}_optuna_trials.db")
+    storage = optuna.storages.RDBStorage(f"sqlite:///{studies_directory}/{name}_optuna_trials.db")
 
     study = optuna.load_study(
         study_name=f"{name}_optuna_trials",
