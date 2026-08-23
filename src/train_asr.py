@@ -54,7 +54,11 @@ from optuna.visualization.matplotlib import (
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
 ):
-    training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_directory)
+    training_args = Seq2SeqTrainingArguments(
+        **cfg.training, 
+        output_dir=model_directory,
+        logging_dir=os.path.join(model_directory, "logs"),
+    )
 
     trainer = Seq2SeqTrainer(
         args=training_args,

@@ -5,6 +5,8 @@ defaults:
   - dataset: speech2latex_llm    
   - training: sft
   - lora: qwen
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
   - _self_
 
 logging_directory: logs

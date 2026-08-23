@@ -5,6 +5,8 @@ defaults:
   - dataset: speech2latex    
   - training: seq2seq
   - lora: whisper
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
   - _self_
 
 logging_directory: logs
