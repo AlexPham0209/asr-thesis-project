@@ -17,7 +17,6 @@ dependencies = [
     "nltk>=3.10.3",
     "optuna>=4.9.0",
     "peft>=0.20.0",
-    "plotly>=6.9.0",
     "pydub>=0.25.1",
     "pykatex>=0.1.1",
     "pylatexenc>=2.11",
