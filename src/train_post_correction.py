@@ -4,6 +4,9 @@ import logging
 import os
 import sys
 import time
+
+import optuna
+from utils.hyperparameter import compute_objective, create_hyperparameter_diagrams, hp_space
 from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
@@ -47,23 +50,6 @@ import trl
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def compute_objective(metrics):
-    # Optuna will minimize the evaluation loss by default (or use "eval_wer" for WER minimization)
-    return metrics["eval_loss"]
-
-
-def hp_space(trial):
-    """Defines the search space for Optuna trials."""
-    return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical(
-            "per_device_train_batch_size", [16, 32, 64]
-        ),
-        "num_train_epochs": trial.suggest_int("num_train_epochs", 2, 5),
-        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2),
-    }
 
 
 def inference(model, tokenizer, normalizer, dataset):
@@ -222,8 +208,11 @@ def main(cfg: DictConfig):
     # Creating metrics
     compute_metrics = create_llm_metric(tokenizer=tokenizer, normalizer=latex_normalizer)
 
-    model_path = os.path.join(
-        cfg.model_directory, f"{cfg.get('model_name', 'model')}"
+    # Model name and directory
+    model_name = cfg.get('model_name', 'model')
+    model_name_timestamp = f"{model_name}_{timestamp}"
+    model_directory = os.path.join(
+        cfg.model_directory, model_name_timestamp
     )
 
     training_args = SFTConfig(
@@ -234,7 +223,7 @@ def main(cfg: DictConfig):
         loss_type="nll",
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
-        output_dir=model_path,
+        output_dir=model_directory,
     )
 
     # Creating trainer
@@ -249,16 +238,6 @@ def main(cfg: DictConfig):
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
     )
 
-    # Calculating previous WER scores
-    # pre_metrics = inference(model, tokenizer, latex_normalizer, test)
-    # logger.info(
-    #     f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
-    # )
-
-    # Deleting pre-evaluation model and clearing cache
-    # del model
-    # torch.cuda.empty_cache()
-
     # Execute hyperparameter search
     if cfg.get("use_hyperparameter_search", False):
         n_trials = cfg.get("n_trials", 10)
@@ -270,11 +249,17 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
+            study_name=f"{model_name_timestamp}_optuna_study",
+            storage=f"sqlite:///{model_name_timestamp}_optuna_trials.db",
+            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
+            load_if_exists=True
         )
-
+        
         logger.info("------- Best Hyperparameters Found -------")
         logger.info(best_run)
-
+        
+        create_hyperparameter_diagrams(model_name_timestamp, model_directory)
+        
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
@@ -290,15 +275,7 @@ def main(cfg: DictConfig):
     trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
-    model_directory = cfg.model_directory
-    trainer.save_model(os.path.join(model_directory, timestamp))
-
-    # Evaluating finetuned model on test dataset
-    logger.info("------- Evaluating Best Model on Test Dataset -------")
-    post_metrics = inference(trainer.model, tokenizer, latex_normalizer, test)
-    logger.info(
-        f"Previous Results - {' - '.join(f'{metric}: {post_metrics[metric]:.2f}' for metric in post_metrics)}"
-    )
+    trainer.save_model(model_directory)
 
 
 if __name__ == "__main__":

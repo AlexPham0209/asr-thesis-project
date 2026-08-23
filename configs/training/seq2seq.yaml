@@ -16,17 +16,17 @@ training:
   generation_max_length: 300
   
   eval_strategy: "steps"
-  eval_steps: 250
+  eval_steps: 500
   
   save_strategy: "steps"
-  save_steps: 250
+  save_steps: 500
 
   logging_strategy: "steps"
-  logging_steps: 250
+  logging_steps: 500
   report_to: tensorboard
   
   load_best_model_at_end: True
-  metric_for_best_model: "wer"
+  metric_for_best_model: "cer"
   greater_is_better: False
   push_to_hub: False
 

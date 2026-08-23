@@ -4,6 +4,9 @@ import logging
 import os
 import sys
 import time
+
+import optuna
+from utils.hyperparameter import compute_objective, create_hyperparameter_diagrams, hp_space
 from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
@@ -12,6 +15,7 @@ import torch
 from torch import nn
 from transformers import (
     AutoTokenizer,
+    EarlyStoppingCallback,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     Trainer,
@@ -40,14 +44,17 @@ warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+from optuna.visualization.matplotlib import (
+    plot_optimization_history,
+    plot_intermediate_values,
+    plot_param_importances
+)
+
 
 def create_seq2seq_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
+    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp, model_directory
 ):
-    model_path = os.path.join(
-        cfg.model_directory, f"{cfg.get('model_name', 'model')}_{timestamp}"
-    )
-    training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_path)
+    training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_directory)
 
     trainer = Seq2SeqTrainer(
         args=training_args,
@@ -57,17 +64,19 @@ def create_seq2seq_trainer(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         processing_class=processor,
-        callbacks=[CustomLoggingCallback(logger)],
+        callbacks=[
+            CustomLoggingCallback(logger),
+            EarlyStoppingCallback(early_stopping_patience=5, early_stopping_threshold=0.0)
+        ],
     )
 
     return trainer
 
 
 def create_ctc_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp
+    cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory,
 ):
-    model_path = os.path.join(cfg.model_directory, model.config._name_or_path)
-    training_args = TrainingArguments(**cfg.training, output_dir=model_path)
+    training_args = TrainingArguments(**cfg.training, output_dir=model_directory)
 
     trainer = Trainer(
         model_init=model,
@@ -77,34 +86,13 @@ def create_ctc_trainer(
         eval_dataset=valid,
         processing_class=processor,
         compute_metrics=compute_metrics,
-        callbacks=[CustomLoggingCallback(logger)],
+        callbacks=[
+            CustomLoggingCallback(logger),
+            EarlyStoppingCallback(early_stopping_patience=3, early_stopping_threshold=0.0)
+        ],
     )
 
     return trainer
-
-
-def create_custom_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator
-):
-    pass
-
-
-def compute_objective(metrics):
-    # Optuna will minimize the evaluation loss by default (or use "eval_wer" for WER minimization)
-    return metrics["eval_loss"]
-
-
-def hp_space(trial):
-    """Defines the search space for Optuna trials."""
-    return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical(
-            "per_device_train_batch_size", [16, 32, 64]
-        ),
-        "num_train_epochs": trial.suggest_int("num_train_epochs", 2, 5),
-        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2),
-    }
-
 
 def inference(model, processor, normalizer, dataset, architecture):
     # Metrics
@@ -256,7 +244,7 @@ def main(cfg: DictConfig):
         model = model(
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
-        ).to(device)
+        )
 
         if hasattr(model, "config"):
             model.config.forced_decoder_ids = None
@@ -265,7 +253,7 @@ def main(cfg: DictConfig):
 
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             config = LoraConfig(**cfg.lora_config)
-            model = get_peft_model(model, config).to(device)
+            model = get_peft_model(model, config)
 
             trainable_parameters = model.get_nb_trainable_parameters()
             all_parameters = len(model.parameters())
@@ -310,6 +298,13 @@ def main(cfg: DictConfig):
     # Creating metrics
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
+    # Model name and directory
+    model_name = cfg.get('model_name', 'model')
+    model_name_timestamp = f"{model_name}_{timestamp}"
+    model_directory = os.path.join(
+        cfg.model_directory, model_name_timestamp
+    )
+    
     # Creating trainer
     trainer = (
         create_ctc_trainer(
@@ -321,6 +316,7 @@ def main(cfg: DictConfig):
             compute_metrics=compute_metrics,
             data_collator=DataCollatorCTCWithPadding(processor=processor),
             timestamp=timestamp,
+            model_directory=model_directory,
         )
         if architecture == "ctc"
         else create_seq2seq_trainer(
@@ -332,14 +328,9 @@ def main(cfg: DictConfig):
             compute_metrics=compute_metrics,
             data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
             timestamp=timestamp,
+            model_directory=model_directory,
         )
     )
-
-    # Calculating previous WER scores
-    # pre_metrics = inference(model, processor, latex_normalizer, test, architecture)
-    # logger.info(
-    #     f"Previous Results - {' - '.join(f'{metric}: {pre_metrics[metric]:.2f}' for metric in pre_metrics)}"
-    # )
 
     # # Deleting pre-evaluation model and clearing cache
     del model
@@ -356,16 +347,24 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
+            study_name=f"{model_name_timestamp}_optuna_study",
+            storage=f"sqlite:///{model_name_timestamp}_optuna_trials.db",
+            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
+            load_if_exists=True
         )
 
         logger.info("------- Best Hyperparameters Found -------")
         logger.info(best_run)
+
+        create_hyperparameter_diagrams(model_name_timestamp, model_directory)
 
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
 
     # Training and logging metrics
+    trainer.model = model_init(None)
+
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
@@ -376,17 +375,7 @@ def main(cfg: DictConfig):
     trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
-    model_directory = cfg.model_directory
-    trainer.save_model(os.path.join(model_directory, timestamp))
-
-    # Evaluating finetuned model on test dataset
-    logger.info("------- Evaluating Best Model on Test Dataset -------")
-    post_metrics = inference(
-        trainer.model, processor, latex_normalizer, test, architecture
-    )
-    logger.info(
-        f"Previous Results - {' - '.join(f'{metric}: {post_metrics[metric]:.2f}' for metric in post_metrics)}"
-    )
+    trainer.save_model(model_directory)
 
 
 if __name__ == "__main__":
