@@ -34,3 +34,5 @@ training:
   dataloader_pin_memory: true
   torch_compile: true
   dataloader_persistent_workers: true
+
+  save_only_model: False

@@ -15,3 +15,4 @@ results_directory: results
 normalize_during_preprocessing: false
 use_lora: false
 use_hyperparameter_search: false
+n_trials: 2
