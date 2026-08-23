@@ -20,7 +20,7 @@ accelerate launch \
     --num_processes=4 \
     --multi_gpu \
     src/train_asr.py \
-    model=whisper_small \
+    model=whisper_large \
     training=seq2seq \
     lora=whisper \
     use_lora=true \

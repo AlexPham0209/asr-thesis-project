@@ -228,7 +228,7 @@ def main(cfg: DictConfig):
 
     # Creating trainer
     trainer = SFTTrainer(
-        model=model,
+        model_init=model_init,
         args=training_args,
         train_dataset=train,
         eval_dataset=test,
@@ -264,6 +264,8 @@ def main(cfg: DictConfig):
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
 
+        trainer.model = model_init(None)
+    
     # Training and logging metrics
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)

@@ -52,7 +52,7 @@ from optuna.visualization.matplotlib import (
 
 
 def create_seq2seq_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, timestamp, model_directory
+    cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
 ):
     training_args = Seq2SeqTrainingArguments(**cfg.training, output_dir=model_directory)
 
@@ -315,7 +315,6 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorCTCWithPadding(processor=processor),
-            timestamp=timestamp,
             model_directory=model_directory,
         )
         if architecture == "ctc"
@@ -327,7 +326,6 @@ def main(cfg: DictConfig):
             valid=valid,
             compute_metrics=compute_metrics,
             data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
-            timestamp=timestamp,
             model_directory=model_directory,
         )
     )
@@ -361,9 +359,10 @@ def main(cfg: DictConfig):
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
-
+            
+        trainer.model = model_init(None)
+    
     # Training and logging metrics
-    trainer.model = model_init(None)
 
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
