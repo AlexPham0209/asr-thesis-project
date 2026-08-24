@@ -361,17 +361,28 @@ def main(cfg: DictConfig):
             load_if_exists=True
         )
 
-        logger.info("------- Best Hyperparameters Found -------")
-        logger.info(best_run)
+        if trainer.is_world_process_zero() and best_run is not None:
+            logger.info("------- Best Hyperparameters Found -------")
+            logger.info(best_run)
 
-        create_hyperparameter_diagrams(
-            name=model_name, 
-            model_directory=model_directory, 
-            studies_directory=studies_directory
+            create_hyperparameter_diagrams(
+                name=model_name, 
+                model_directory=model_directory, 
+                studies_directory=studies_directory
+            )
+
+        # 2. Synchronize all GPUs to wait for rank 0 to finish the HPO search
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
+
+        # 3. Load the best parameters from the database across ALL processes
+        study = optuna.load_study(
+            study_name=f"{model_name}_optuna_study",
+            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db"
         )
-
+        
         # Re-train with the best hyperparameters
-        for k, v in best_run.hyperparameters.items():
+        for k, v in study.best_params.items():
             setattr(trainer.args, k, v)
             
         trainer.model = model_init(None)
