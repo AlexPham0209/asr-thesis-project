@@ -263,21 +263,36 @@ def main(cfg: DictConfig):
             load_if_exists=True,
         )
 
-        logger.info("------- Best Hyperparameters Found -------")
-        logger.info(best_run)
-
-        create_hyperparameter_diagrams(
-            name=model_name,
-            model_directory=model_directory,
-            studies_directory=studies_directory,
-        )
-
-        # Re-train with the best hyperparameters
-        for k, v in best_run.hyperparameters.items():
-            setattr(trainer.args, k, v)
-
-        trainer.model = model_init(None)
-
+        if trainer.is_world_process_zero() and best_run is not None:
+            logger.info("------- Best Hyperparameters Found -------")
+            logger.info(best_run)
+            create_hyperparameter_diagrams(
+                name=model_name,
+                model_directory=model_directory,
+                    tudies_directory=studies_directory,
+            )
+        
+        # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
+        
+        if best_run is not None:
+            # Apply best params to args
+            for k, v in best_run.hyperparameters.items():
+                OmegaConf.update(cfg.training, k, v, merge=True)
+        
+                    # Safest DDP approach: Re-instantiate the trainer for the final run
+            trainer = SFTTrainer(
+                model_init=model_init,
+                args=training_args,
+                train_dataset=train,
+                eval_dataset=test,
+                peft_config=lora_config,
+                compute_metrics=compute_metrics,
+                processing_class=tokenizer,
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            )
+            
     # Training and logging metrics
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)

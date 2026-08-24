@@ -30,7 +30,7 @@ import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
 from data.normalizer import create_latex_normalizer
-from utils.logger import CustomLoggingCallback
+from utils.logger import CustomLoggingCallback, initialize_loggers
 from utils.metrics import create_metric
 
 from data.data_collator import (
@@ -53,6 +53,7 @@ from optuna.visualization.matplotlib import (
     plot_intermediate_values,
     plot_param_importances,
 )
+
 
 
 def create_seq2seq_trainer(
@@ -183,55 +184,6 @@ def create_diagram(points, name, path):
     plt.savefig(path)
 
 
-def initialize_loggers(cfg, timestamp):
-    logging_directory = cfg.logging_directory
-    os.makedirs(logging_directory, exist_ok=True)
-
-    # Common log formatter
-    file_formatter = logging.Formatter(
-        fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-    )
-
-    # Creating subfolder for current run
-    run_directory = os.path.join(logging_directory, timestamp)
-    os.makedirs(run_directory, exist_ok=True)
-
-    # Screen/Console Handler (Attached to root so everything prints to stdout)
-    screen_handler = logging.StreamHandler(stream=sys.stdout)
-    screen_handler.setFormatter(file_formatter)
-
-    # Root Logger Setup (Captures everything)
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(screen_handler)
-
-    root_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "all.log"), mode="w"
-    )
-    root_file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(root_file_handler)
-
-    # Application Logger Setup (Isolates your app's code logs via "finetuning")
-    app_logger = logging.getLogger("finetuning")
-    app_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "app.log"), mode="w"
-    )
-    app_file_handler.setFormatter(file_formatter)
-    app_logger.addHandler(app_file_handler)
-    app_logger.propagate = False
-
-    # Hugging Face Logger Setup (Isolates Hugging Face transformers logs)
-    hf_logger_instance = hf_logging.get_logger("transformers")
-    hf_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "hf.log"), mode="w"
-    )
-    hf_file_handler.setFormatter(file_formatter)
-    hf_logger_instance.addHandler(hf_file_handler)
-
-    hf_logging.set_verbosity_info()
-
-
 @hydra.main(version_base=None, config_path="../configs", config_name="asr_config")
 def main(cfg: DictConfig):
     # Creating loggers
@@ -309,7 +261,8 @@ def main(cfg: DictConfig):
         processor=processor,
         architecture=architecture,
         normalizer=normalizer if normalize_during_preprocessing else None,
-    )
+    )             
+    
     train = preprocess_fn(train)
     valid = preprocess_fn(valid)
     test = preprocess_fn(test)
