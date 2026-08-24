@@ -9,6 +9,11 @@ defaults:
   - override hydra/job_logging: disabled
   - _self_
 
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
 logging_directory: logs
 model_directory: models
 results_directory: results

@@ -51,5 +51,5 @@ def preprocess_speech2latex(dataset, tokenizer, normalizer):
         return batch
 
     # Map the preprocessing function across the entire dataset in batches
-    dataset = dataset.map(preprocess, remove_columns=dataset.column_names)
+    dataset = dataset.select(100).map(preprocess, remove_columns=dataset.column_names)
     return dataset

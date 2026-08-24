@@ -255,7 +255,7 @@ def main(cfg: DictConfig):
             n_trials=n_trials,
             study_name=f"{model_name}_optuna_study",
             storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
-            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
+            pruner=optuna.pruners.MedianPruner(n_warmup_steps=5),
             load_if_exists=True
         )
         

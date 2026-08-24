@@ -2,7 +2,7 @@ import os
 
 from matplotlib import pyplot as plt
 import optuna
-from optuna.visualization import plot_intermediate_values, plot_optimization_history, plot_param_importances
+from optuna.visualization.matplotlib import plot_intermediate_values, plot_optimization_history, plot_param_importances
 
 
 def compute_objective(metrics):
@@ -29,21 +29,18 @@ def create_hyperparameter_diagrams(name: str, model_directory: str, studies_dire
     storage = optuna.storages.RDBStorage(f"sqlite:///{studies_directory}/{name}_optuna_trials.db")
 
     study = optuna.load_study(
-        study_name=f"{name}_optuna_trials",
+        study_name=f"{name}_optuna_study",
         storage=storage
     )
 
     # Plot optimization history
     ax1 = plot_optimization_history(study)
-    plt.show()
     ax1.figure.savefig(os.path.join(model_directory, "optimization_history.png"))
 
     # Plot intermediate values (if using pruning and intermediate reports)
     ax2 = plot_intermediate_values(study)
-    plt.show()
     ax2.figure.savefig(os.path.join(model_directory, "intermediate_values.png"))
 
     # Plot parameter importances
     ax3 = plot_param_importances(study)
-    plt.show()
     ax3.figure.savefig(os.path.join(model_directory, "param_importances.png"))

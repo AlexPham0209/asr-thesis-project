@@ -32,7 +32,7 @@ training:
 
   dataloader_num_workers: 10
   dataloader_pin_memory: true
-  torch_compile: true
+  torch_compile: false
   dataloader_persistent_workers: true
 
   save_only_model: False

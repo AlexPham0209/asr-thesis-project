@@ -57,7 +57,6 @@ def create_seq2seq_trainer(
     training_args = Seq2SeqTrainingArguments(
         **cfg.training, 
         output_dir=model_directory,
-        logging_dir=os.path.join(model_directory, "logs"),
     )
 
     trainer = Seq2SeqTrainer(
@@ -80,7 +79,10 @@ def create_seq2seq_trainer(
 def create_ctc_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory,
 ):
-    training_args = TrainingArguments(**cfg.training, output_dir=model_directory)
+    training_args = TrainingArguments(
+        **cfg.training, 
+        output_dir=model_directory
+    )
 
     trainer = Trainer(
         model_init=model,
