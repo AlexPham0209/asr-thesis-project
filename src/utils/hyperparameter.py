@@ -2,7 +2,11 @@ import os
 
 from matplotlib import pyplot as plt
 import optuna
-from optuna.visualization.matplotlib import plot_intermediate_values, plot_optimization_history, plot_param_importances
+from optuna.visualization.matplotlib import (
+    plot_intermediate_values,
+    plot_optimization_history,
+    plot_param_importances,
+)
 
 
 def compute_objective(metrics):
@@ -22,16 +26,17 @@ def hp_space(trial):
         ),
         "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.3),
     }
-    
-    
-def create_hyperparameter_diagrams(name: str, model_directory: str, studies_directory: str):
-    # Load the study from RDB storage
-    storage = optuna.storages.RDBStorage(f"sqlite:///{studies_directory}/{name}_optuna_trials.db")
 
-    study = optuna.load_study(
-        study_name=f"{name}_optuna_study",
-        storage=storage
+
+def create_hyperparameter_diagrams(
+    name: str, model_directory: str, studies_directory: str
+):
+    # Load the study from RDB storage
+    storage = optuna.storages.RDBStorage(
+        f"sqlite:///{studies_directory}/{name}_optuna_trials.db"
     )
+
+    study = optuna.load_study(study_name=f"{name}_optuna_study", storage=storage)
 
     # Plot optimization history
     ax1 = plot_optimization_history(study)

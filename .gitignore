@@ -222,6 +222,7 @@ __marimo__/
 # Folders
 outputs/
 logs/
+studies/
 
 data/**
 !data/*

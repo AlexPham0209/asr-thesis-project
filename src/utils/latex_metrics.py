@@ -34,7 +34,7 @@ class LatexInContextMetrics:
         # if normalizer is not None and callable(normalizer):
         #     predictions_normalized = [normalizer(x) for x in predictions]
         #     references_normalized = [normalizer(x) for x in references]
-        
+
         result = {}
 
         # Word Error Rate

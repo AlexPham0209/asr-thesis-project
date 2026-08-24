@@ -6,7 +6,11 @@ import sys
 import time
 
 import optuna
-from utils.hyperparameter import compute_objective, create_hyperparameter_diagrams, hp_space
+from utils.hyperparameter import (
+    compute_objective,
+    create_hyperparameter_diagrams,
+    hp_space,
+)
 from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
@@ -26,10 +30,10 @@ from hydra.utils import instantiate
 from datasets import load_dataset
 from data.normalizer import create_latex_normalizer
 from utils.logger import CustomLoggingCallback
-from utils.metrics import ( 
+from utils.metrics import (
     create_metric,
     create_llm_metric,
-    preprocess_logits_for_metrics
+    preprocess_logits_for_metrics,
 )
 
 from data.data_collator import (
@@ -206,15 +210,15 @@ def main(cfg: DictConfig):
     )
 
     # Creating metrics
-    compute_metrics = create_llm_metric(tokenizer=tokenizer, normalizer=latex_normalizer)
+    compute_metrics = create_llm_metric(
+        tokenizer=tokenizer, normalizer=latex_normalizer
+    )
 
     # Model name and directory
-    model_name = cfg.get('model_name', 'model')
+    model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory = os.path.join(
-        cfg.model_directory, model_name
-    )
-    
+    model_directory = os.path.join(cfg.model_directory, model_name)
+
     # Studies storage folder
     studies_directory = os.path.join("studies", model_name)
     os.makedirs(studies_directory, exist_ok=True)
@@ -239,7 +243,7 @@ def main(cfg: DictConfig):
         peft_config=lora_config,
         compute_metrics=compute_metrics,
         processing_class=tokenizer,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
     # Execute hyperparameter search
@@ -256,24 +260,24 @@ def main(cfg: DictConfig):
             study_name=f"{model_name}_optuna_study",
             storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
-            load_if_exists=True
+            load_if_exists=True,
         )
-        
+
         logger.info("------- Best Hyperparameters Found -------")
         logger.info(best_run)
-        
+
         create_hyperparameter_diagrams(
-            name=model_name, 
-            model_directory=model_directory, 
-            studies_directory=studies_directory
+            name=model_name,
+            model_directory=model_directory,
+            studies_directory=studies_directory,
         )
-        
+
         # Re-train with the best hyperparameters
         for k, v in best_run.hyperparameters.items():
             setattr(trainer.args, k, v)
 
         trainer.model = model_init(None)
-    
+
     # Training and logging metrics
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)

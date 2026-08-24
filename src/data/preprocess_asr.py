@@ -4,6 +4,7 @@ import logging
 
 logger = logging.getLogger("finetuning")
 
+
 def preprocess(dataset, processor, architecture, normalizer):
     input_key = "input_values" if architecture == "ctc" else "input_features"
     target_sampling_rate = processor.feature_extractor.sampling_rate
@@ -73,7 +74,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     def preprocess(batch):
         # Extract audio arrays directly from Hugging Face's pre-decoded structures
         samples = batch["audio_path"].get_all_samples()
-        audio= samples.data.squeeze(dim=0)
+        audio = samples.data.squeeze(dim=0)
         text = batch["sentence"]
 
         if normalizer:
@@ -84,22 +85,22 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
             audio=audio,
             text=text,
             sampling_rate=target_sampling_rate,
-            return_tensors="pt"
+            return_tensors="pt",
         )
 
         # Tokenize labels without padding
         batch[input_key] = batch[input_key].squeeze(dim=0)
         batch["labels"] = batch["labels"].squeeze(dim=0)
-        
+
         batch["input_length"] = audio.size(dim=-1) / samples.sample_rate
 
         return batch
-    
+
     # Map with multiprocessing support
     dataset = dataset.map(
         preprocess,
         remove_columns=dataset.column_names,
         num_proc=1,
     )
-    
+
     return dataset

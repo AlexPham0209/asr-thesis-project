@@ -5,6 +5,7 @@ import logging
 
 logger = logging.getLogger("finetuning")
 
+
 # Curried function for evaluating metrics
 def create_metric(processor, normalizer=None):
     def compute_metrics(pred):
@@ -37,7 +38,7 @@ def create_metric(processor, normalizer=None):
 def create_llm_metric(tokenizer, normalizer=None):
     def compute_metrics(eval_preds):
         pred_ids, label_ids = eval_preds
-        
+
         pred_ids = pred_ids[..., :-1]
         label_ids = label_ids[..., 1:]
 
@@ -46,16 +47,20 @@ def create_llm_metric(tokenizer, normalizer=None):
 
         for pred, label in zip(pred_ids, label_ids):
             mask = label != -100
-            
+
             preds.append(pred[mask])
             labels.append(label[mask])
-        
-        pred_str = tokenizer.batch_decode(preds, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-        label_str = tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+        pred_str = tokenizer.batch_decode(
+            preds, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )
+        label_str = tokenizer.batch_decode(
+            labels, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )
 
         logger.info(f"Prediction: {pred_str[0]}")
         logger.info(f"Label: {label_str[0]}\n")
-        
+
         metrics = LatexInContextMetrics(text_normalizer=normalizer)
         result = metrics.compute_all(pred_str, label_str)
         return result
@@ -71,6 +76,6 @@ def preprocess_logits_for_metrics(logits, labels):
     """
     if isinstance(logits, tuple):
         logits = logits[0]
-    
+
     # Take argmax on GPU to drop the heavy vocab dimension
     return logits.argmax(dim=-1)

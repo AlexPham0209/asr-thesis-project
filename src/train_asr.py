@@ -6,7 +6,11 @@ import sys
 import time
 
 import optuna
-from utils.hyperparameter import compute_objective, create_hyperparameter_diagrams, hp_space
+from utils.hyperparameter import (
+    compute_objective,
+    create_hyperparameter_diagrams,
+    hp_space,
+)
 from utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
@@ -47,7 +51,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 from optuna.visualization.matplotlib import (
     plot_optimization_history,
     plot_intermediate_values,
-    plot_param_importances
+    plot_param_importances,
 )
 
 
@@ -55,7 +59,7 @@ def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
 ):
     training_args = Seq2SeqTrainingArguments(
-        **cfg.training, 
+        **cfg.training,
         output_dir=model_directory,
     )
 
@@ -69,7 +73,9 @@ def create_seq2seq_trainer(
         processing_class=processor,
         callbacks=[
             CustomLoggingCallback(logger),
-            EarlyStoppingCallback(early_stopping_patience=5, early_stopping_threshold=0.0)
+            EarlyStoppingCallback(
+                early_stopping_patience=5, early_stopping_threshold=0.0
+            ),
         ],
     )
 
@@ -77,12 +83,16 @@ def create_seq2seq_trainer(
 
 
 def create_ctc_trainer(
-    cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory,
+    cfg,
+    model,
+    processor,
+    train,
+    valid,
+    compute_metrics,
+    data_collator,
+    model_directory,
 ):
-    training_args = TrainingArguments(
-        **cfg.training, 
-        output_dir=model_directory
-    )
+    training_args = TrainingArguments(**cfg.training, output_dir=model_directory)
 
     trainer = Trainer(
         model_init=model,
@@ -94,11 +104,14 @@ def create_ctc_trainer(
         compute_metrics=compute_metrics,
         callbacks=[
             CustomLoggingCallback(logger),
-            EarlyStoppingCallback(early_stopping_patience=3, early_stopping_threshold=0.0)
+            EarlyStoppingCallback(
+                early_stopping_patience=3, early_stopping_threshold=0.0
+            ),
         ],
     )
 
     return trainer
+
 
 def inference(model, processor, normalizer, dataset, architecture):
     # Metrics
@@ -305,16 +318,14 @@ def main(cfg: DictConfig):
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
     # Model name and directory
-    model_name = cfg.get('model_name', 'model')
+    model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory = os.path.join(
-        cfg.model_directory, model_name
-    )
-    
+    model_directory = os.path.join(cfg.model_directory, model_name)
+
     # Studies storage folder
     studies_directory = os.path.join("studies", model_name)
     os.makedirs(studies_directory, exist_ok=True)
-    
+
     # Creating trainer
     trainer = (
         create_ctc_trainer(
@@ -358,34 +369,49 @@ def main(cfg: DictConfig):
             study_name=f"{model_name}_optuna_study",
             storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
-            load_if_exists=True
+            load_if_exists=True,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
+            create_hyperparameter_diagrams(...)
 
-            create_hyperparameter_diagrams(
-                name=model_name, 
-                model_directory=model_directory, 
-                studies_directory=studies_directory
-            )
-
-        # 2. Synchronize all GPUs to wait for rank 0 to finish the HPO search
+        # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
 
-        # 3. Load the best parameters from the database across ALL processes
-        study = optuna.load_study(
-            study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db"
-        )
-        
-        # Re-train with the best hyperparameters
-        for k, v in study.best_params.items():
-            setattr(trainer.args, k, v)
-            
-        trainer.model = model_init(None)
+        if best_run is not None:
+            # Apply best params to args
+            for k, v in best_run.hyperparameters.items():
+                OmegaConf.update(cfg.training, k, v, merge=True)
+
+            # Safest DDP approach: Re-instantiate the trainer for the final run
+            trainer = (
+                create_ctc_trainer(
+                    cfg=cfg,
+                    model=model_init,
+                    processor=processor,
+                    train=train,
+                    valid=valid,
+                    compute_metrics=compute_metrics,
+                    data_collator=DataCollatorCTCWithPadding(processor=processor),
+                    model_directory=model_directory,
+                )
+                if architecture == "ctc"
+                else create_seq2seq_trainer(
+                    cfg=cfg,
+                    model=model_init,
+                    processor=processor,
+                    train=train,
+                    valid=valid,
+                    compute_metrics=compute_metrics,
+                    data_collator=DataCollatorSpeechSeq2SeqWithPadding(
+                        processor=processor
+                    ),
+                    model_directory=model_directory,
+                )
+            )
 
     # Training model with best run hyperparameters
     train_results = trainer.train()
