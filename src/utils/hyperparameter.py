@@ -24,7 +24,6 @@ def hp_space(trial):
         "lr_scheduler_type": trial.suggest_categorical(
             "lr_scheduler_type", ["linear", "cosine", "constant"]
         ),
-        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.3),
     }
 
 

@@ -375,7 +375,11 @@ def main(cfg: DictConfig):
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
-            create_hyperparameter_diagrams(...)
+            create_hyperparameter_diagrams(
+            name=model_name,
+            model_directory=model_directory,
+            studies_directory=studies_directory,
+        )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():

@@ -282,11 +282,11 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-
+        
     # Evaluate using the validation dataset
-    valid_metrics = trainer.evaluate()
-    trainer.log_metrics("eval", valid_metrics)
-    trainer.save_metrics("eval", valid_metrics)
+    # valid_metrics = trainer.evaluate()
+    # trainer.log_metrics("eval", valid_metrics)
+    # trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
     trainer.save_model(model_directory)
