@@ -1,5 +1,6 @@
 from datasets.features import Audio
 from data.normalizer import contains_equation, has_valid_equation
+import torchaudio
 import logging
 
 logger = logging.getLogger("finetuning")
@@ -75,6 +76,14 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
         # Extract audio arrays directly from Hugging Face's pre-decoded structures
         samples = batch["audio_path"].get_all_samples()
         audio = samples.data.squeeze(dim=0)
+
+        if samples.sample_rate != target_sampling_rate:
+            audio = torchaudio.functional.resample(
+                audio, 
+                orig_freq=samples.sample_rate, 
+                new_freq=target_sampling_rate
+            )
+            
         text = batch["sentence"]
 
         if normalizer:
@@ -87,7 +96,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
             sampling_rate=target_sampling_rate,
             return_tensors="pt",
         )
-
+        
         # Tokenize labels without padding
         batch[input_key] = batch[input_key].squeeze(dim=0)
         batch["labels"] = batch["labels"].squeeze(dim=0)
