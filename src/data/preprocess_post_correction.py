@@ -6,11 +6,11 @@ def create_messages(text, label=None):
     messages = [
         {
             "role": "system",
-            "content": "You are a specialized translator that outputs LaTeX code based on mathematical sentences.",
+            "content": "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
         },
         {
             "role": "user",
-            "content": f"Convert this mathematical sentence to LaTeX: {text}",
+            "content": text,
         },
     ]
 
