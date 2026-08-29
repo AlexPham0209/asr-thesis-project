@@ -79,11 +79,9 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
 
         if samples.sample_rate != target_sampling_rate:
             audio = torchaudio.functional.resample(
-                audio, 
-                orig_freq=samples.sample_rate, 
-                new_freq=target_sampling_rate
+                audio, orig_freq=samples.sample_rate, new_freq=target_sampling_rate
             )
-            
+
         text = batch["sentence"]
 
         if normalizer:
@@ -96,7 +94,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
             sampling_rate=target_sampling_rate,
             return_tensors="pt",
         )
-        
+
         # Tokenize labels without padding
         batch[input_key] = batch[input_key].squeeze(dim=0)
         batch["labels"] = batch["labels"].squeeze(dim=0)

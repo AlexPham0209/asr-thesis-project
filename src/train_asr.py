@@ -55,7 +55,6 @@ from optuna.visualization.matplotlib import (
 )
 
 
-
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
 ):
@@ -261,8 +260,8 @@ def main(cfg: DictConfig):
         processor=processor,
         architecture=architecture,
         normalizer=normalizer if normalize_during_preprocessing else None,
-    )             
-    
+    )
+
     train = preprocess_fn(train)
     valid = preprocess_fn(valid)
     test = preprocess_fn(test)
@@ -329,10 +328,10 @@ def main(cfg: DictConfig):
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
             create_hyperparameter_diagrams(
-            name=model_name,
-            model_directory=model_directory,
-            studies_directory=studies_directory,
-        )
+                name=model_name,
+                model_directory=model_directory,
+                studies_directory=studies_directory,
+            )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():

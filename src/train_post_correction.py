@@ -269,19 +269,19 @@ def main(cfg: DictConfig):
             create_hyperparameter_diagrams(
                 name=model_name,
                 model_directory=model_directory,
-                    tudies_directory=studies_directory,
+                tudies_directory=studies_directory,
             )
-        
+
         # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
-        
+
         if best_run is not None:
             # Apply best params to args
             for k, v in best_run.hyperparameters.items():
                 OmegaConf.update(cfg.training, k, v, merge=True)
-        
-                    # Safest DDP approach: Re-instantiate the trainer for the final run
+
+                # Safest DDP approach: Re-instantiate the trainer for the final run
             trainer = SFTTrainer(
                 model_init=model_init,
                 args=training_args,
@@ -292,12 +292,12 @@ def main(cfg: DictConfig):
                 processing_class=tokenizer,
                 preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             )
-            
+
     # Training and logging metrics
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-        
+
     # Evaluate using the validation dataset
     # valid_metrics = trainer.evaluate()
     # trainer.log_metrics("eval", valid_metrics)

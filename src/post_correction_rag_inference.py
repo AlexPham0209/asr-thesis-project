@@ -20,6 +20,7 @@ from transformers import (
 from transformers.utils import logging as hf_logging
 from peft import PeftModel
 
+from models.post_correction_rag import PostCorrectionRAG
 from utils.logger import initialize_loggers
 from utils.latex_metrics import LatexInContextMetrics
 
@@ -44,8 +45,7 @@ def evaluate_batch(
     batch,
     asr_model,
     asr_processor,
-    llm_model,
-    llm_tokenizer,
+    rag: PostCorrectionRAG,
     system_prompt,
     target_sampling_rate,
     eval_device,
@@ -77,39 +77,8 @@ def evaluate_batch(
 
     transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
 
-    # 2. --- LLM Post-Correction ---
-    messages_batch = [
-        [{"role": "system", "content": system_prompt}, {"role": "user", "content": t}]
-        for t in transcriptions
-    ]
-
-    prompts = [
-        llm_tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
-        for m in messages_batch
-    ]
-
-    llm_inputs = llm_tokenizer(
-        prompts, return_tensors="pt", padding=True, truncation=True
-    ).to(eval_device)
-
-    with torch.no_grad():
-        llm_outputs = llm_model.generate(
-            **llm_inputs,
-            max_new_tokens=256,
-            pad_token_id=llm_tokenizer.pad_token_id,
-            eos_token_id=llm_tokenizer.eos_token_id,
-            temperature=0.2,
-            do_sample=True,
-        )
-
-    corrected_transcriptions = []
-    for i, output in enumerate(llm_outputs):
-        input_len = llm_inputs.input_ids[i].shape[-1]
-        generated_tokens = output[input_len:]
-        decoded_text = llm_tokenizer.decode(
-            generated_tokens, skip_special_tokens=True
-        ).strip()
-        corrected_transcriptions.append(decoded_text)
+    # 2. --- RAG Post-Correction ---
+    corrected_transcriptions = rag.inference(inputs=transcriptions)
 
     batch["raw_asr_predictions"] = transcriptions
     batch["predictions"] = corrected_transcriptions
@@ -168,6 +137,19 @@ def main(cfg: DictConfig):
         )
 
     llm_model.eval()
+    
+    # Getting ChromaDB vector database
+    db_path = cfg.get("db_path", "./vector_db")
+    collection_name = cfg.get("collection_name", "speech2latex")
+    
+    ## Initializing RAG model
+    rag = PostCorrectionRAG(
+        system_prompt=system_prompt,
+        model=llm_model,
+        tokenizer=llm_tokenizer,
+        db_path=db_path,
+        collection_name=collection_name
+    )
 
     # 3. Load & Filter Dataset
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
@@ -192,8 +174,7 @@ def main(cfg: DictConfig):
         evaluate_batch,
         asr_model=asr_model,
         asr_processor=asr_processor,
-        llm_model=llm_model,
-        llm_tokenizer=llm_tokenizer,
+        rag=rag,
         system_prompt=system_prompt,
         target_sampling_rate=target_sampling_rate,
         eval_device=device,
