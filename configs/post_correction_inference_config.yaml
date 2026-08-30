@@ -10,12 +10,6 @@ system_prompt: |
   You are an expert transcription editor converting messy ASR output into clean LaTeX. 
   Correct the user's spoken math into the exact LaTeX representation. Output ONLY the LaTeX.
 
-  Here are syntactically correct LaTeX examples similar to what the user is saying. 
-  Use these for formatting clues:
-  <examples>
-  {examples_str}
-  </examples>
-
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
