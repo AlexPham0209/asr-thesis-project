@@ -1,6 +1,7 @@
 import chromadb
 import datasets
 
+
 def combined_filter(sample):
     # Language check
     if sample["language"] != "eng":
@@ -30,20 +31,16 @@ def main():
     target_sentences = [{"target": target} for target in dataset["sentence"]]
     ids = [f"id_{i}" for i in range(len(dataset))]
 
-    BATCH_SIZE = 5000 
+    BATCH_SIZE = 5000
     print(f"Upserting {len(ids)} documents in batches of {BATCH_SIZE}...")
     for i in range(0, len(ids), BATCH_SIZE):
         batch_docs = source_sentences[i : i + BATCH_SIZE]
         batch_meta = target_sentences[i : i + BATCH_SIZE]
         batch_ids = ids[i : i + BATCH_SIZE]
-            
-        collection.upsert(
-            documents=batch_docs,
-            metadatas=batch_meta,
-            ids=batch_ids
-        )
+
+        collection.upsert(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)
         print(f"Upserted batch {i // BATCH_SIZE + 1}")
-    
+
     print("Vector database created")
 
 

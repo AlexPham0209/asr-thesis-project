@@ -5,6 +5,7 @@ from datasets import load_dataset
 import transformers
 import datasets
 
+from data.filters import combined_filter
 from utils.latex_metrics import LatexInContextMetrics
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -17,23 +18,6 @@ processor: WhisperProcessor = AutoProcessor.from_pretrained(
     pretrained_model_name_or_path="openai/whisper-small"
 )
 target_sampling_rate = processor.feature_extractor.sampling_rate
-
-
-def combined_filter(sample):
-    # Language check
-    if sample["language"] != "eng":
-        return False
-
-    # Equation quality checks
-    text = sample["whisper_text"]
-
-    # Single-channel check (HF datasets loads audio as 1D numpy array shape (N,) for mono)
-    # Multi-channel arrays would have ndim == 2
-    audio_data = sample["audio_path"].get_all_samples().data
-    if not (audio_data.ndim == 2 and audio_data.shape[0] == 1):
-        return False
-
-    return True
 
 
 # 3. Corrected and vectorized batched mapping

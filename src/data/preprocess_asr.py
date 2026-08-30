@@ -3,6 +3,8 @@ from data.normalizer import contains_equation, has_valid_equation
 import torchaudio
 import logging
 
+from data.filters import combined_filter
+
 logger = logging.getLogger("finetuning")
 
 
@@ -49,26 +51,6 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
 
     # 1. Cast audio column for auto-decoding
     dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
-
-    # 2. Combine all filtering into a SINGLE pass for high efficiency
-    def combined_filter(sample):
-        # Language check
-        if sample["language"] != "eng":
-            return False
-
-        # Equation quality checks
-        text = sample["sentence"]
-        if not (contains_equation(text) and has_valid_equation(text)):
-            return False
-
-        # Single-channel check (HF datasets loads audio as 1D numpy array shape (N,) for mono)
-        # Multi-channel arrays would have ndim == 2
-        audio_data = sample["audio_path"].get_all_samples().data
-        if not (audio_data.ndim == 2 and audio_data.shape[0] == 1):
-            return False
-
-        return True
-
     dataset = dataset.filter(combined_filter, num_proc=10)
 
     # 3. Corrected and vectorized batched mapping

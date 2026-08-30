@@ -1,6 +1,8 @@
 from data.normalizer import contains_equation, has_valid_equation
 from transformers import AutoTokenizer
 
+from data.filters import combined_filter
+
 
 def create_messages(text, label=None):
     messages = [
@@ -22,13 +24,7 @@ def create_messages(text, label=None):
 
 def preprocess_speech2latex(dataset, tokenizer, normalizer):
     dataset = dataset.remove_columns(["audio_path"])
-    dataset = dataset.filter(lambda sample: sample["language"] == "eng", num_proc=10)
-    dataset = dataset.filter(
-        lambda sample: has_valid_equation(sample["sentence"]), num_proc=10
-    )
-    dataset = dataset.filter(
-        lambda sample: contains_equation(sample["sentence"]), num_proc=10
-    )
+    dataset = dataset.filter(combined_filter, num_proc=10)
 
     def preprocess(batch):
         text = batch["whisper_text"]

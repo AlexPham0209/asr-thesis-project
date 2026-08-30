@@ -4,6 +4,7 @@ import logging
 import warnings
 from datetime import datetime
 import functools
+import gc
 
 import torch
 import torchaudio
@@ -17,10 +18,10 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
 )
-from transformers.utils import logging as hf_logging
 from peft import PeftModel
 
 from models.post_correction_rag import PostCorrectionRAG
+from data.filters import combined_filter
 from utils.logger import initialize_loggers
 from utils.latex_metrics import LatexInContextMetrics
 
@@ -29,28 +30,8 @@ logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def combined_filter(sample):
-    """Filters dataset for English language and single-channel audio."""
-    if sample["language"] != "eng":
-        return False
-
-    audio_data = sample["audio_path"].get_all_samples().data
-    if not (audio_data.ndim == 2 and audio_data.shape[0] == 1):
-        return False
-
-    return True
-
-
-def evaluate_batch(
-    batch,
-    asr_model,
-    asr_processor,
-    rag: PostCorrectionRAG,
-    system_prompt,
-    target_sampling_rate,
-    eval_device,
-):
-    """Batched mapping function for executing ASR followed by LLM post-correction."""
+def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
+    """Stage 1: Audio -> Raw ASR Predictions"""
     audios = []
 
     for audio in batch["audio_path"]:
@@ -65,39 +46,58 @@ def evaluate_batch(
             )
         audios.append(audio_tensor.numpy())
 
-    references = batch["sentence"]
-
-    # 1. --- ASR Inference ---
+    # Dynamically match target model device
     inputs = asr_processor(
         audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
-    ).to(eval_device)
+    ).to(asr_model.device)
 
     with torch.no_grad():
-        generated_ids = asr_model.generate(inputs["input_features"])
+        generated_ids = asr_model.generate(
+            inputs["input_features"], language="english", task="transcribe"
+        )
 
     transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
 
-    # 2. --- RAG Post-Correction ---
+    return {
+        "raw_asr_predictions": transcriptions,
+        "references": batch["sentence"],
+    }
+
+
+def run_rag_batch(batch, rag: PostCorrectionRAG):
+    """Stage 2: Raw ASR Predictions -> RAG LaTeX Post-Correction"""
+    transcriptions = batch["raw_asr_predictions"]
     corrected_transcriptions = rag.inference(inputs=transcriptions)
-
-    batch["raw_asr_predictions"] = transcriptions
-    batch["predictions"] = corrected_transcriptions
-    batch["references"] = references
-
-    return batch
+    return {"predictions": corrected_transcriptions}
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="inference_config")
 def main(cfg: DictConfig):
     # Setup loggers
-    now = datetime.now()
-    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
 
-    logger.info(f"Using device: {device}")
-    logger.info("------- Initializing Inference Pipeline -------")
+    logger.info(f"Using primary device: {device}")
+    logger.info("------- Initializing RAG Inference Pipeline -------")
 
-    # 1. Load ASR Setup
+    # 1. Load & Filter Dataset First
+    dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
+    dataset_split = cfg.get("dataset_split", "sentences_test")
+    logger.info(f"Loading dataset: {dataset_name} ({dataset_split})")
+
+    dataset = datasets.load_dataset(dataset_name, name="default", split=dataset_split)
+
+    logger.info("Filtering dataset...")
+    dataset = dataset.filter(combined_filter, num_proc=cfg.get("num_proc", 10))
+
+    max_samples = cfg.get("max_eval_samples", len(dataset))
+    if max_samples:
+        logger.info(f"Subsampling to {max_samples} samples.")
+        dataset = dataset.select(range(min(max_samples, len(dataset))))
+
+    batch_size = cfg.get("batch_size", 8)
+
+    # 2. Stage 1: ASR Setup & Execution
     asr_model_id = cfg.get("asr_model_id", "openai/whisper-small")
     logger.info(f"Loading ASR model: {asr_model_id}")
 
@@ -107,11 +107,31 @@ def main(cfg: DictConfig):
     asr_processor = AutoProcessor.from_pretrained(asr_model_id)
     target_sampling_rate = asr_processor.feature_extractor.sampling_rate
 
-    # 2. Load LLM Setup
+    logger.info("Executing Stage 1: ASR Inference...")
+    asr_fn = functools.partial(
+        run_asr_batch,
+        asr_model=asr_model,
+        asr_processor=asr_processor,
+        target_sampling_rate=target_sampling_rate,
+    )
+
+    # Drop non-standard audio objects to avoid Arrow serialization errors
+    dataset = dataset.map(
+        asr_fn,
+        batched=True,
+        batch_size=batch_size,
+        remove_columns=dataset.column_names,
+    )
+
+    # Free ASR memory before initializing LLM & Vector DB
+    del asr_model
+    del asr_processor
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # 3. Stage 2: LLM & RAG Setup
     llm_base_model = cfg.get("llm_base_model", "meta-llama/Llama-3-8b-Instruct")
-    llm_peft_path = cfg.get(
-        "llm_peft_path", None
-    )  # Path to LoRA adapters saved during training
+    llm_peft_path = cfg.get("llm_peft_path", None)
     system_prompt = cfg.get(
         "system_prompt",
         "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
@@ -119,6 +139,9 @@ def main(cfg: DictConfig):
 
     logger.info(f"Loading LLM model: {llm_base_model}")
     llm_tokenizer = AutoTokenizer.from_pretrained(llm_base_model)
+
+    # Must be set to left-padding for batched generation slicing in PostCorrectionRAG
+    llm_tokenizer.padding_side = "left"
     if llm_tokenizer.pad_token is None:
         llm_tokenizer.pad_token = llm_tokenizer.eos_token
 
@@ -137,55 +160,26 @@ def main(cfg: DictConfig):
         )
 
     llm_model.eval()
-    
+
     # Getting ChromaDB vector database
     db_path = cfg.get("db_path", "./vector_db")
     collection_name = cfg.get("collection_name", "speech2latex")
-    
-    ## Initializing RAG model
+
+    logger.info("Initializing RAG module...")
     rag = PostCorrectionRAG(
         system_prompt=system_prompt,
         model=llm_model,
         tokenizer=llm_tokenizer,
         db_path=db_path,
-        collection_name=collection_name
+        collection_name=collection_name,
     )
 
-    # 3. Load & Filter Dataset
-    dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
-    dataset_split = cfg.get("dataset_split", "sentences_test")
-    logger.info(f"Loading dataset: {dataset_name} ({dataset_split})")
+    logger.info("Executing Stage 2: RAG Post-Correction...")
+    rag_fn = functools.partial(run_rag_batch, rag=rag)
 
-    dataset = datasets.load_dataset(dataset_name, name="default", split=dataset_split)
+    dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
 
-    logger.info("Filtering dataset...")
-    dataset = dataset.filter(combined_filter, num_proc=cfg.get("num_proc", 10))
-
-    max_samples = cfg.get("max_eval_samples", len(dataset))
-    if max_samples:
-        logger.info(f"Subsampling to {max_samples} samples.")
-        dataset = dataset.select(range(min(max_samples, len(dataset))))
-
-    # 4. Map the Pipeline (using functools to cleanly pass models)
-    logger.info("Executing batched ASR + LLM Post-Correction mapping...")
-
-    # Partial function binds the loaded models to the map function natively
-    eval_fn = functools.partial(
-        evaluate_batch,
-        asr_model=asr_model,
-        asr_processor=asr_processor,
-        rag=rag,
-        system_prompt=system_prompt,
-        target_sampling_rate=target_sampling_rate,
-        eval_device=device,
-    )
-
-    # Batch size of 8 or 4 is recommended when loading Whisper + LLM simultaneously on one GPU
-    batch_size = cfg.get("batch_size", 8)
-
-    dataset = dataset.map(eval_fn, batched=True, batch_size=batch_size)
-
-    # 5. Compute Metrics
+    # 4. Compute Metrics
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()
 
