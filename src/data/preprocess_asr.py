@@ -86,7 +86,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
         return batch
 
     # Map with multiprocessing support
-    dataset = dataset.select(range(100)).map(
+    dataset = dataset.map(
         preprocess,
         remove_columns=dataset.column_names,
         num_proc=1,

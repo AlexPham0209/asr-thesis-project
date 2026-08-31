@@ -56,7 +56,6 @@ def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
     return {"raw_asr_predictions": transcriptions, "references": batch["sentence"]}
 
-
 def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     """Stage 2: Raw ASR Predictions -> LaTeX Corrected Output"""
     transcriptions = batch["raw_asr_predictions"]
@@ -78,7 +77,7 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     with torch.no_grad():
         llm_outputs = llm_model.generate(
             **llm_inputs,
-            max_new_tokens=256,
+            max_new_tokens=512,
             pad_token_id=llm_tokenizer.pad_token_id,
             eos_token_id=llm_tokenizer.eos_token_id,
             temperature=0.2,
@@ -91,10 +90,16 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
         generated_ids, skip_special_tokens=True
     )
 
+    # logger.info(corrected_transcriptions[0])
+    # logger.info(llm_tokenizer.batch_decode(
+    #     llm_outputs,
+    #     skip_special_tokens=True
+    # )[0] + "\n")
+
     return {"predictions": corrected_transcriptions}
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="inference_config")
+@hydra.main(version_base=None, config_path="../configs", config_name="post_correction_inference_config")
 def main(cfg: DictConfig):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
@@ -140,6 +145,9 @@ def main(cfg: DictConfig):
         asr_fn, batched=True, batch_size=batch_size, remove_columns=dataset.column_names
     )
 
+    logger.info(dataset["raw_asr_predictions"])
+    logger.info(dataset["references"])
+
     # Free ASR memory before loading LLM
     del asr_model
     del asr_processor
@@ -181,6 +189,9 @@ def main(cfg: DictConfig):
     )
 
     dataset = dataset.map(llm_fn, batched=True, batch_size=batch_size)
+
+    logger.info(dataset["predictions"])
+    logger.info(dataset["references"])
 
     # 4. Compute Metrics
     logger.info("Computing Metrics...")

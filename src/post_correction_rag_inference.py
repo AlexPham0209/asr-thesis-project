@@ -179,6 +179,9 @@ def main(cfg: DictConfig):
 
     dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
 
+    logger.info(dataset["predictions"])
+    logger.info(dataset["references"])
+
     # 4. Compute Metrics
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()

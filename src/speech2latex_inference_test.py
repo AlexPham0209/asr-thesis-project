@@ -19,7 +19,6 @@ processor: WhisperProcessor = AutoProcessor.from_pretrained(
 )
 target_sampling_rate = processor.feature_extractor.sampling_rate
 
-
 # 3. Corrected and vectorized batched mapping
 def evaluate_batch(batch):
     audios = []
@@ -65,7 +64,7 @@ dataset = datasets.load_dataset(
     "marsianin500/Speech2Latex", name="default", split="sentences_test"
 )
 dataset = dataset.filter(combined_filter, num_proc=10)
-dataset = dataset.select(range(500)).map(evaluate_batch, batched=True, batch_size=16)
+dataset = dataset.select(range(50)).map(evaluate_batch, batched=True, batch_size=16)
 
 metrics = LatexInContextMetrics()
 
