@@ -3,6 +3,8 @@
 #SBATCH -p GPU-shared
 #SBATCH -t 24:00:00
 #SBATCH --gpus=v100-32:4
+#SBATCH --output=slurm-%A_%a.out
+#SBATCH --error=slurm-%A_%a.err
 
 # Echo commands to stdout for tracking
 set -x
@@ -25,5 +27,6 @@ accelerate launch \
     lora=whisper \
     use_lora=true \
     use_hyperparameter_search=true \
+    n_trials=5 \
     dataset=speech2latex \
     training.max_steps=5000 \

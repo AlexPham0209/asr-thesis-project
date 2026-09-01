@@ -1,8 +1,10 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p GPU-shared
-#SBATCH -t 12:00:00
+#SBATCH -t 24:00:00
 #SBATCH --gpus=v100-32:4
+#SBATCH --output=slurm-%A_%a.out
+#SBATCH --error=slurm-%A_%a.err
 
 # Echo executed commands for debugging
 set -x
