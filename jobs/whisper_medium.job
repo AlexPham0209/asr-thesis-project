@@ -20,9 +20,11 @@ accelerate launch \
     --num_processes=4 \
     --multi_gpu \
     src/train_asr.py \
-    model=whisper_small \
+    model=whisper_medium \
     training=seq2seq \
     lora=whisper \
     use_lora=true \
     use_hyperparameter_search=true \
+    n_trials=5 \
     dataset=speech2latex
+    training.max_steps=5000 \

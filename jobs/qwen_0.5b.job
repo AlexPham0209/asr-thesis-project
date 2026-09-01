@@ -20,8 +20,9 @@ accelerate launch \
     --num_processes=4 \
     --multi_gpu \
     src/train_post_correction.py \
-    model=llama \
+    model=qwen_0.5b \
     training=sft \
     lora=llama \
     use_lora=true \
-    dataset=speech2latex_llm
+    dataset=speech2latex_llm \
+    training.max_steps=5000 \
