@@ -94,54 +94,6 @@ def create_diagram(points, name, path):
     plt.savefig(path)
 
 
-def initialize_loggers(cfg, timestamp):
-    logging_directory = cfg.logging_directory
-    os.makedirs(logging_directory, exist_ok=True)
-
-    # Common log formatter
-    file_formatter = logging.Formatter(
-        fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-    )
-
-    # Creating subfolder for current run
-    run_directory = os.path.join(logging_directory, timestamp)
-    os.makedirs(run_directory, exist_ok=True)
-
-    # Screen/Console Handler (Attached to root so everything prints to stdout)
-    screen_handler = logging.StreamHandler(stream=sys.stdout)
-    screen_handler.setFormatter(file_formatter)
-
-    # Root Logger Setup (Captures everything)
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(screen_handler)
-
-    root_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "all.log"), mode="w"
-    )
-    root_file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(root_file_handler)
-
-    # Application Logger Setup (Isolates your app's code logs via "finetuning")
-    app_logger = logging.getLogger("finetuning")
-    app_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "app.log"), mode="w"
-    )
-    app_file_handler.setFormatter(file_formatter)
-    app_logger.addHandler(app_file_handler)
-    app_logger.propagate = False
-
-    # Hugging Face Logger Setup (Isolates Hugging Face transformers logs)
-    hf_logger_instance = hf_logging.get_logger("transformers")
-    hf_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "hf.log"), mode="w"
-    )
-    hf_file_handler.setFormatter(file_formatter)
-    hf_logger_instance.addHandler(hf_file_handler)
-
-    hf_logging.set_verbosity_info()
-
 
 @hydra.main(
     version_base=None, config_path="../configs", config_name="post_correction_config"
@@ -150,7 +102,6 @@ def main(cfg: DictConfig):
     # Creating loggers
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-    initialize_loggers(cfg=cfg, timestamp=timestamp)
 
     logger.info(device)
 
@@ -161,9 +112,9 @@ def main(cfg: DictConfig):
 
     # Instantiating model and processor (Can either be a pretrained model or customly trained model)
     logger.info("------- Model Configurations -------")
-    logger.info(f"{cfg.model}\n")
+    logger.info(f"{cfg.processor}\n")
 
-    if not cfg.get("tokenizer"):
+    if not cfg.get("processor"):
         raise ValueError("Missing 'model' configuration block in your YAML")
 
     logger.info(f"{cfg.tokenizer}\n")
@@ -176,7 +127,7 @@ def main(cfg: DictConfig):
         return model
 
     model = model_init(None)
-    tokenizer = hydra.utils.instantiate(cfg.tokenizer)
+    processor = hydra.utils.instantiate(cfg.processor)
     normalizer = (
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     )
@@ -197,7 +148,7 @@ def main(cfg: DictConfig):
     normalize_during_preprocessing = cfg.get("normalize_during_preprocessing", False)
     preprocess_fn = hydra.utils.instantiate(
         cfg.preprocess,
-        tokenizer=tokenizer,
+        processor=processor,
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
     train = preprocess_fn(train)
@@ -211,7 +162,7 @@ def main(cfg: DictConfig):
 
     # Creating metrics
     compute_metrics = create_llm_metric(
-        tokenizer=tokenizer, normalizer=latex_normalizer
+        tokenizer=processor, normalizer=latex_normalizer
     )
 
     # Model name and directory
@@ -242,7 +193,7 @@ def main(cfg: DictConfig):
         eval_dataset=test,
         peft_config=lora_config,
         compute_metrics=compute_metrics,
-        processing_class=tokenizer,
+        processing_class=processor,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
@@ -289,7 +240,9 @@ def main(cfg: DictConfig):
     trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
-    trainer.save_model(model_directory)
+    saved_directory = os.path.join(model_directory, "result")
+    os.makedirs(saved_directory, exist_ok=True)
+    trainer.save_model(saved_directory)
 
 
 if __name__ == "__main__":

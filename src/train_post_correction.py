@@ -304,7 +304,9 @@ def main(cfg: DictConfig):
     # trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
-    trainer.save_model(model_directory)
+    saved_directory = os.path.join(model_directory, "result")
+    os.makedirs(saved_directory, exist_ok=True)
+    trainer.save_model(saved_directory)
 
 
 if __name__ == "__main__":

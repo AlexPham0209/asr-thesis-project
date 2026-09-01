@@ -304,8 +304,8 @@ def main(cfg: DictConfig):
     )
 
     # # Deleting pre-evaluation model and clearing cache
-    del model
-    torch.cuda.empty_cache()
+    # del model
+    # torch.cuda.empty_cache()
 
     # Execute hyperparameter search
     if cfg.get("use_hyperparameter_search", False):
@@ -380,7 +380,9 @@ def main(cfg: DictConfig):
     trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
-    trainer.save_model(model_directory)
+    saved_directory = os.path.join(model_directory, "result")
+    os.makedirs(saved_directory, exist_ok=True)
+    trainer.save_model(saved_directory)
 
 
 if __name__ == "__main__":

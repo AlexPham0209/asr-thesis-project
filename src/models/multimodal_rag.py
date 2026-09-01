@@ -2,7 +2,7 @@ import chromadb
 import torch
 import torchaudio.functional as F
 
-class QwenAudioRAG:
+class MultimodalRAG:
     def __init__(self, system_prompt, llm_model, llm_processor, db_path, collection_name):
         self.system_prompt = system_prompt
         self.client = chromadb.PersistentClient(path=db_path)

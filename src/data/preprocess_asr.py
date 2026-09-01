@@ -89,7 +89,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     dataset = dataset.map(
         preprocess,
         remove_columns=dataset.column_names,
-        num_proc=1,
+        num_proc=3,
     )
 
     return dataset

@@ -47,7 +47,7 @@ def create_llm_metric(tokenizer, normalizer=None):
 
         for pred, label in zip(pred_ids, label_ids):
             mask = label != -100
-
+            
             preds.append(pred[mask])
             labels.append(label[mask])
 
@@ -67,6 +67,8 @@ def create_llm_metric(tokenizer, normalizer=None):
 
     return compute_metrics
 
+def create_multimodal_llm_metric(processor, normalizer=None):
+    pass
 
 def preprocess_logits_for_metrics(logits, labels):
     """
@@ -79,3 +81,5 @@ def preprocess_logits_for_metrics(logits, labels):
 
     # Take argmax on GPU to drop the heavy vocab dimension
     return logits.argmax(dim=-1)
+
+
