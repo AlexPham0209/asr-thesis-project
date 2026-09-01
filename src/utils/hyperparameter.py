@@ -17,6 +17,7 @@ def compute_objective(metrics):
 def hp_space(trial):
     """Defines the search space for Optuna trials."""
     return {
+        "max_steps": trial.suggest_categorical("max_steps", [1000, 2000]),
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
         "per_device_train_batch_size": trial.suggest_categorical(
             "per_device_train_batch_size", [1, 2, 4]
