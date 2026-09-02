@@ -17,6 +17,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
 from torch import nn
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from transformers import (
     AutoTokenizer,
     EarlyStoppingCallback,
@@ -45,16 +47,16 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-warnings.filterwarnings("ignore", category=UserWarning)
-logger = logging.getLogger("finetuning")
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
 from optuna.visualization.matplotlib import (
     plot_optimization_history,
     plot_intermediate_values,
     plot_param_importances,
 )
+
+warnings.filterwarnings("ignore", category=UserWarning)
+logger = logging.getLogger("finetuning")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 
 def create_seq2seq_trainer(
