@@ -42,6 +42,8 @@ import logging
 from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
 import warnings
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -333,10 +335,16 @@ def main(cfg: DictConfig):
                 studies_directory=studies_directory,
             )
 
-        # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
+        # Synchronize to ensure Rank 0 is done drawing diagrams
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
+            
+            # FIX: Broadcast the best_run object from Rank 0 to all other ranks
+            best_run_list = [best_run] if trainer.is_world_process_zero() else [None]
+            torch.distributed.broadcast_object_list(best_run_list, src=0)
+            best_run = best_run_list[0]
 
+        # Now ALL ranks will evaluate this as True and cleanly re-instantiate the model
         if best_run is not None:
             # Apply best params to args
             for k, v in best_run.hyperparameters.items():
