@@ -373,7 +373,9 @@ def main(cfg: DictConfig):
     trainer.save_metrics("train", train_results.metrics)
 
     # Evaluate using the validation dataset
-    valid_metrics = trainer.evaluate()
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        valid_metrics = trainer.evaluate()
+        
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
 
