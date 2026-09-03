@@ -17,8 +17,6 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
 from torch import nn
-
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from transformers import (
     AutoTokenizer,
     EarlyStoppingCallback,
@@ -56,7 +54,6 @@ from optuna.visualization.matplotlib import (
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
 
 def create_seq2seq_trainer(
@@ -322,20 +319,11 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
-            study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
-            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
-            load_if_exists=True,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
-            create_hyperparameter_diagrams(
-                name=model_name,
-                model_directory=model_directory,
-                studies_directory=studies_directory,
-            )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams
         if torch.distributed.is_initialized():
