@@ -17,6 +17,8 @@ module load anaconda3
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate env
 
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
 # Launch multi-GPU training across all 4 V100s
 accelerate launch \
     --num_processes=4 \
