@@ -2,6 +2,8 @@ from builtins import getattr
 from datetime import datetime
 import logging
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import sys
 import time
 
@@ -305,8 +307,8 @@ def main(cfg: DictConfig):
     )
 
     # # Deleting pre-evaluation model and clearing cache
-    # del model
-    # torch.cuda.empty_cache()
+    del model
+    torch.cuda.empty_cache()
 
     # Execute hyperparameter search
     if cfg.get("use_hyperparameter_search", False):
