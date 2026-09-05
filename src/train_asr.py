@@ -231,7 +231,7 @@ def main(cfg: DictConfig):
             model = get_peft_model(model, config)
 
             trainable_parameters = model.get_nb_trainable_parameters()
-            all_parameters = len(model.parameters())
+            all_parameters = sum(p.numel() for p in model.parameters())
             percentage = all_parameters / trainable_parameters
             logger.info(
                 f"Trainable params: {trainable_parameters} | All params: {all_parameters} | Trainable%: {percentage}"
