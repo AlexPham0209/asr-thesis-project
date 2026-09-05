@@ -21,3 +21,4 @@ normalize_during_preprocessing: false
 use_lora: false
 use_hyperparameter_search: false
 n_trials: 2
+use_timestamp: true

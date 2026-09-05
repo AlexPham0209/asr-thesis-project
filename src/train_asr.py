@@ -276,10 +276,11 @@ def main(cfg: DictConfig):
     # Model name and directory
     model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory = os.path.join(cfg.model_directory, model_name)
+    model_directory_name = model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
-    studies_directory = os.path.join("studies", model_name)
+    studies_directory = os.path.join("studies", model_directory_name)
     os.makedirs(studies_directory, exist_ok=True)
 
     # Creating trainer
