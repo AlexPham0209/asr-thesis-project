@@ -269,7 +269,7 @@ def main(cfg: DictConfig):
     )
 
     train = preprocess_fn(train)
-    valid = preprocess_fn(valid).select(range(10))
+    valid = preprocess_fn(valid)
     test = preprocess_fn(test)
 
     # Creating metrics
