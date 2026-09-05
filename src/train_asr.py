@@ -227,7 +227,8 @@ def main(cfg: DictConfig):
             model.config.use_cache = False
 
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
-            config = LoraConfig(**cfg.lora_config)
+            lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
+            config = LoraConfig(**lora_config)
             model = get_peft_model(model, config)
 
             trainable_parameters, all_parameters = model.get_nb_trainable_parameters()
@@ -248,7 +249,7 @@ def main(cfg: DictConfig):
 
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
-        raise ValueError("Missing 'data' configutation block in your YAML")
+        raise ValueError("Missing 'data' configuration block in your YAML")
 
     # Loading in dataset
     datasets = hydra.utils.instantiate(cfg.dataset)
@@ -267,7 +268,7 @@ def main(cfg: DictConfig):
     )
 
     train = preprocess_fn(train)
-    valid = preprocess_fn(valid)
+    valid = preprocess_fn(valid).select(range(10))
     test = preprocess_fn(test)
 
     # Creating metrics
