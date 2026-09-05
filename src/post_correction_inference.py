@@ -56,6 +56,7 @@ def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
     return {"raw_asr_predictions": transcriptions, "references": batch["sentence"]}
 
+
 def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     """Stage 2: Raw ASR Predictions -> LaTeX Corrected Output"""
     transcriptions = batch["raw_asr_predictions"]
@@ -99,7 +100,11 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     return {"predictions": corrected_transcriptions}
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="post_correction_inference_config")
+@hydra.main(
+    version_base=None,
+    config_path="../configs",
+    config_name="post_correction_inference_config",
+)
 def main(cfg: DictConfig):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)

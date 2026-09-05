@@ -56,7 +56,10 @@ def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
     return {"predictions": transcriptions, "references": batch["sentence"]}
 
-@hydra.main(version_base=None, config_path="../configs", config_name="asr_inference_config")
+
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="asr_inference_config"
+)
 def main(cfg: DictConfig):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
@@ -100,7 +103,7 @@ def main(cfg: DictConfig):
     dataset = dataset.map(
         asr_fn, batched=True, batch_size=batch_size, remove_columns=dataset.column_names
     )
-    
+
     # 4. Compute Metrics
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()

@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 from transformers import (
     AutoProcessor,
-    AutoModelForCausalLM, # Changed for Multimodal LLMs
+    AutoModelForCausalLM,  # Changed for Multimodal LLMs
     Trainer,
     TrainingArguments,
 )
@@ -59,9 +59,11 @@ def inference(model, processor, normalizer, dataset):
     model.eval()
     for sample in dataset:
         # Assuming dataset contains 'audio' (array, sampling_rate) and 'label'
-        audio = sample["audio"] 
+        audio = sample["audio"]
         label_text = sample["label"]
-        prompt = sample.get("prompt", "<|audio_bos|><|AUDIO|><|audio_eos|>\nTranscribe:")
+        prompt = sample.get(
+            "prompt", "<|audio_bos|><|AUDIO|><|audio_eos|>\nTranscribe:"
+        )
 
         # Process both audio and text prompt simultaneously
         inputs = processor(
@@ -73,9 +75,9 @@ def inference(model, processor, normalizer, dataset):
 
         with torch.no_grad():
             generated_ids = model.generate(
-                **inputs, 
-                max_new_tokens=256, 
-                pad_token_id=processor.tokenizer.pad_token_id
+                **inputs,
+                max_new_tokens=256,
+                pad_token_id=processor.tokenizer.pad_token_id,
             )
 
         # Strip input prompt tokens from output
@@ -100,7 +102,9 @@ def create_diagram(points, name, path):
     plt.savefig(path)
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="multimodal_asr_config")
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="multimodal_asr_config"
+)
 def main(cfg: DictConfig):
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -109,7 +113,9 @@ def main(cfg: DictConfig):
     logger.info("------- Running Experiment Configuration -------")
 
     if not cfg.get("model") or not cfg.get("processor"):
-        raise ValueError("Missing 'model' or 'processor' configuration block in your YAML")
+        raise ValueError(
+            "Missing 'model' or 'processor' configuration block in your YAML"
+        )
 
     logger.info("------- Instantiating Model & Processor -------")
 
@@ -119,7 +125,9 @@ def main(cfg: DictConfig):
 
     model = model_init(None)
     processor = hydra.utils.instantiate(cfg.processor)
-    normalizer = hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
+    normalizer = (
+        hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
+    )
     latex_normalizer = create_latex_normalizer(normalizer=normalizer)
 
     logger.info("------- Preparing Dataset -------")
@@ -137,7 +145,7 @@ def main(cfg: DictConfig):
         processor=processor,
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
-    
+
     train = preprocess_fn(train)
     test = preprocess_fn(test)
 
@@ -152,9 +160,7 @@ def main(cfg: DictConfig):
         else None
     )
 
-    compute_metrics = create_metric(
-        processor=processor, normalizer=latex_normalizer
-    )
+    compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
     model_name = cfg.get("model_name", "multimodal_model")
     model_directory = os.path.join(cfg.model_directory, model_name)
@@ -165,9 +171,9 @@ def main(cfg: DictConfig):
     training_args = SFTConfig(
         **cfg.training,
         max_length=cfg.get("max_length", 512),
-        packing=False,                 # MUST BE FALSE FOR AUDIO TENSORS
-        remove_unused_columns=False,   # MUST BE FALSE so audio columns aren't deleted by Trainer
-        dataset_text_field=None,       # Remove text-field reliance; use preprocess_fn output
+        packing=False,  # MUST BE FALSE FOR AUDIO TENSORS
+        remove_unused_columns=False,  # MUST BE FALSE so audio columns aren't deleted by Trainer
+        dataset_text_field=None,  # Remove text-field reliance; use preprocess_fn output
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
         output_dir=model_directory,
@@ -179,7 +185,7 @@ def main(cfg: DictConfig):
         args=training_args,
         train_dataset=train,
         eval_dataset=test,
-        data_collator=data_collator,    # Inject multimodal collator
+        data_collator=data_collator,  # Inject multimodal collator
         peft_config=lora_config,
         compute_metrics=compute_metrics,
         processing_class=processor,
@@ -231,6 +237,7 @@ def main(cfg: DictConfig):
     saved_directory = os.path.join(model_directory, "result")
     os.makedirs(saved_directory, exist_ok=True)
     trainer.save_model(saved_directory)
+
 
 if __name__ == "__main__":
     main()

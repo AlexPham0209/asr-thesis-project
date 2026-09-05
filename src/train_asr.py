@@ -2,6 +2,7 @@ from builtins import getattr
 from datetime import datetime
 import logging
 import os
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
@@ -45,6 +46,7 @@ from transformers.utils import logging as hf_logging
 from peft import get_peft_model, LoraConfig
 import warnings
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from optuna.visualization.matplotlib import (
@@ -330,7 +332,7 @@ def main(cfg: DictConfig):
         # Synchronize to ensure Rank 0 is done drawing diagrams
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
-            
+
             # FIX: Broadcast the best_run object from Rank 0 to all other ranks
             best_run_list = [best_run] if trainer.is_world_process_zero() else [None]
             torch.distributed.broadcast_object_list(best_run_list, src=0)
@@ -377,7 +379,7 @@ def main(cfg: DictConfig):
     # Evaluate using the validation dataset
     with torch.autocast(device_type="cuda", dtype=torch.float16):
         valid_metrics = trainer.evaluate()
-        
+
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
 

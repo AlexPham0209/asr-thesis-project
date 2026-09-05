@@ -19,6 +19,7 @@ processor: WhisperProcessor = AutoProcessor.from_pretrained(
 )
 target_sampling_rate = processor.feature_extractor.sampling_rate
 
+
 # 3. Corrected and vectorized batched mapping
 def evaluate_batch(batch):
     audios = []

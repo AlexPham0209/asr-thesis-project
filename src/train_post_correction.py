@@ -2,6 +2,9 @@ from builtins import getattr
 from datetime import datetime
 import logging
 import os
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import sys
 import time
 
@@ -29,7 +32,7 @@ import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
 from data.normalizer import create_latex_normalizer
-from utils.logger import CustomLoggingCallback
+from utils.logger import CustomLoggingCallback, initialize_loggers
 from utils.metrics import (
     create_metric,
     create_llm_metric,
@@ -92,55 +95,6 @@ def create_diagram(points, name, path):
     plt.ylabel(name)
     plt.title(name)
     plt.savefig(path)
-
-
-def initialize_loggers(cfg, timestamp):
-    logging_directory = cfg.logging_directory
-    os.makedirs(logging_directory, exist_ok=True)
-
-    # Common log formatter
-    file_formatter = logging.Formatter(
-        fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-    )
-
-    # Creating subfolder for current run
-    run_directory = os.path.join(logging_directory, timestamp)
-    os.makedirs(run_directory, exist_ok=True)
-
-    # Screen/Console Handler (Attached to root so everything prints to stdout)
-    screen_handler = logging.StreamHandler(stream=sys.stdout)
-    screen_handler.setFormatter(file_formatter)
-
-    # Root Logger Setup (Captures everything)
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(screen_handler)
-
-    root_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "all.log"), mode="w"
-    )
-    root_file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(root_file_handler)
-
-    # Application Logger Setup (Isolates your app's code logs via "finetuning")
-    app_logger = logging.getLogger("finetuning")
-    app_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "app.log"), mode="w"
-    )
-    app_file_handler.setFormatter(file_formatter)
-    app_logger.addHandler(app_file_handler)
-    app_logger.propagate = False
-
-    # Hugging Face Logger Setup (Isolates Hugging Face transformers logs)
-    hf_logger_instance = hf_logging.get_logger("transformers")
-    hf_file_handler = logging.FileHandler(
-        os.path.join(run_directory, "hf.log"), mode="w"
-    )
-    hf_file_handler.setFormatter(file_formatter)
-    hf_logger_instance.addHandler(hf_file_handler)
-
-    hf_logging.set_verbosity_info()
 
 
 @hydra.main(
@@ -257,24 +211,21 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
-            study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
-            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
             load_if_exists=True,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
-            create_hyperparameter_diagrams(
-                name=model_name,
-                model_directory=model_directory,
-                tudies_directory=studies_directory,
-            )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
+
+            # FIX: Broadcast the best_run object from Rank 0 to all other ranks
+            best_run_list = [best_run] if trainer.is_world_process_zero() else [None]
+            torch.distributed.broadcast_object_list(best_run_list, src=0)
+            best_run = best_run_list[0]
 
         if best_run is not None:
             # Apply best params to args
@@ -299,9 +250,10 @@ def main(cfg: DictConfig):
     trainer.save_metrics("train", train_results.metrics)
 
     # Evaluate using the validation dataset
-    # valid_metrics = trainer.evaluate()
-    # trainer.log_metrics("eval", valid_metrics)
-    # trainer.save_metrics("eval", valid_metrics)
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        valid_metrics = trainer.evaluate()
+    trainer.log_metrics("eval", valid_metrics)
+    trainer.save_metrics("eval", valid_metrics)
 
     # Saving model
     saved_directory = os.path.join(model_directory, "result")

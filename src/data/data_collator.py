@@ -76,6 +76,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
         return batch
 
+
 @dataclass
 class DataCollatorMultiModal:
     processor: Any

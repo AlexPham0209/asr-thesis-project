@@ -79,5 +79,3 @@ def preprocess_logits_for_metrics(logits, labels):
 
     # Take argmax on GPU to drop the heavy vocab dimension
     return logits.argmax(dim=-1)
-
-

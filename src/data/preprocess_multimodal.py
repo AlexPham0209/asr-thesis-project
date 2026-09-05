@@ -26,12 +26,9 @@ def create_messages(label):
     ]
 
     if label:
-        messages.append({
-            "role": "assistant", 
-            "content": [
-                {"type": "text", "text": label}
-            ]
-        })
+        messages.append(
+            {"role": "assistant", "content": [{"type": "text", "text": label}]}
+        )
 
     return messages
 
