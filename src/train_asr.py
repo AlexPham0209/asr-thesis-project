@@ -2,6 +2,7 @@ from builtins import getattr
 from datetime import datetime
 import logging
 import os
+import json
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -376,6 +377,12 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
+
+    log_history = trainer.state.log_history
+
+    # Savelog history as a JSON file
+    with open(os.path.join(model_directory, "log_history.json"), "w") as f:
+        json.dump(log_history, f, indent=4)
 
     # Evaluate using the validation dataset
     with torch.autocast(device_type="cuda", dtype=torch.float16):
