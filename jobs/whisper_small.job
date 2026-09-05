@@ -31,5 +31,5 @@ accelerate launch \
     use_hyperparameter_search=true \
     n_trials=5 \
     dataset=speech2latex \
-    training.max_steps=5000 \
+    training.max_steps=5000 
     

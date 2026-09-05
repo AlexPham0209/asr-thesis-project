@@ -29,4 +29,4 @@ accelerate launch \
     lora=llama \
     use_lora=true \
     dataset=speech2latex_llm \
-    training.max_steps=5000 \
+    training.max_steps=5000 
