@@ -58,15 +58,11 @@ def create_llm_metric(tokenizer, normalizer=None):
             labels, skip_special_tokens=True, clean_up_tokenization_spaces=True
         )
 
-        logger.info(f"Prediction: {pred_str[0]}")
-        logger.info(f"Label: {label_str[0]}\n")
-
         metrics = LatexInContextMetrics(text_normalizer=normalizer)
         result = metrics.compute_all(pred_str, label_str)
         return result
 
     return compute_metrics
-
 
 def preprocess_logits_for_metrics(logits, labels):
     """

@@ -1,0 +1,7 @@
+# @package _global_
+
+_target_: models.post_correction_rag.HuggingFaceGenerator
+system_prompt: ${system_prompt}
+model_path: "meta-llama/Llama-3.2-3B-Instruct"
+tokenizer_path: "meta-llama/Llama-3.2-3B-Instruct"
+peft_path: null # Set to string path (e.g., "./checkpoints/lora") if using LoRA

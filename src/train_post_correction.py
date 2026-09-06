@@ -1,7 +1,10 @@
 from builtins import getattr
 from datetime import datetime
+import json
 import logging
 import os
+
+from dotenv import load_dotenv
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -53,10 +56,12 @@ from trl import SFTTrainer, SFTConfig
 import functools
 import trl
 
-# trl.trainer.sft_trainer._patch_chunked_ce_lm_head = lambda *args, **kwargs: None
+load_dotenv()
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
+TOKEN = os.getenv("TOKEN")
 
 
 def inference(model, tokenizer, normalizer, dataset):
@@ -126,7 +131,7 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model)
+        model = hydra.utils.instantiate(cfg.model, token=TOKEN)
         return model
 
     model = model_init(None)
@@ -171,7 +176,8 @@ def main(cfg: DictConfig):
     # Model name and directory
     model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory = os.path.join(cfg.model_directory, model_name)
+    model_directory_name = model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
     studies_directory = os.path.join("studies", model_name)
@@ -211,12 +217,20 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
+            study_name=f"{model_name}_optuna_study",
+            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             load_if_exists=True,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
+            
+            create_hyperparameter_diagrams(
+                name=model_name,
+                model_directory=model_directory,
+                studies_directory=studies_directory,
+            )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams before training starts
         if torch.distributed.is_initialized():
@@ -245,12 +259,18 @@ def main(cfg: DictConfig):
             )
 
     # Training and logging metrics
-    train_results = trainer.train()
+    train_results = trainer.train(resume_from_checkpoint=cfg.get("use_timestamp", False))
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
+    
+    log_history = trainer.state.log_history
+    
+    # Save log history as a JSON file
+    with open(os.path.join(model_directory, "log_history.json"), "w") as f:
+        json.dump(log_history, f, indent=4)
 
     # Evaluate using the validation dataset
-    with torch.autocast(device_type="cuda", dtype=torch.float16):
+    with torch.autocast(device_type=device, dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat166):
         valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)

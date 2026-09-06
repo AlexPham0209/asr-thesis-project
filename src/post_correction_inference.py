@@ -6,6 +6,7 @@ from datetime import datetime
 import functools
 import gc
 
+from dotenv import load_dotenv
 import torch
 import torchaudio
 import datasets
@@ -24,10 +25,12 @@ from data.filters import combined_filter
 from utils.logger import initialize_loggers
 from utils.latex_metrics import LatexInContextMetrics
 
+load_dotenv()
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
+TOKEN = os.getenv("TOKEN")
 
 def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     """Stage 1: Audio -> Raw ASR Predictions"""
@@ -90,12 +93,6 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     corrected_transcriptions = llm_tokenizer.batch_decode(
         generated_ids, skip_special_tokens=True
     )
-
-    # logger.info(corrected_transcriptions[0])
-    # logger.info(llm_tokenizer.batch_decode(
-    #     llm_outputs,
-    #     skip_special_tokens=True
-    # )[0] + "\n")
 
     return {"predictions": corrected_transcriptions}
 

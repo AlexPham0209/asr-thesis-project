@@ -4,6 +4,8 @@ import logging
 import os
 import json
 
+from dotenv import load_dotenv
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
@@ -56,10 +58,12 @@ from optuna.visualization.matplotlib import (
     plot_param_importances,
 )
 
+load_dotenv()
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
+TOKEN = os.getenv("TOKEN")
 
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
@@ -216,7 +220,7 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model)
+        model = hydra.utils.instantiate(cfg.model, token=TOKEN)
         model = model(
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
@@ -324,12 +328,19 @@ def main(cfg: DictConfig):
             compute_objective=compute_objective,
             direction="minimize",
             backend="optuna",
+            study_name=f"{model_name}_optuna_study",
+            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             n_trials=n_trials,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
+            create_hyperparameter_diagrams(
+                name=model_name,
+                model_directory=model_directory,
+                studies_directory=studies_directory,
+            )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams
         if torch.distributed.is_initialized():
@@ -374,18 +385,18 @@ def main(cfg: DictConfig):
             )
 
     # Training model with best run hyperparameters
-    train_results = trainer.train()
+    train_results = trainer.train(resume_from_checkpoint=cfg.get("use_timestamp", False))
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
 
     log_history = trainer.state.log_history
 
-    # Savelog history as a JSON file
+    # Save log history as a JSON file
     with open(os.path.join(model_directory, "log_history.json"), "w") as f:
         json.dump(log_history, f, indent=4)
 
     # Evaluate using the validation dataset
-    with torch.autocast(device_type="cuda", dtype=torch.float16):
+    with torch.autocast(device_type=device, dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16):
         valid_metrics = trainer.evaluate()
 
     trainer.log_metrics("eval", valid_metrics)

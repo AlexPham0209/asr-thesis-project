@@ -1,0 +1,23 @@
+defaults:
+  - generator: gemini
+  - _self_
+
+# Dataset Configuration
+dataset_name: "marsianin500/Speech2Latex"
+dataset_split: "sentences_test"
+num_proc: 10
+max_eval_samples: null # Set to an integer (e.g., 50) for debugging/fast evaluation
+batch_size: 8
+
+# Stage 1: ASR Configuration
+asr_model_id: "openai/whisper-small"
+
+# Stage 2: ChromaDB Vector Database Configuration
+db_path: "./vector_db"
+collection_name: "speech2latex"
+
+# System Prompt shared across generators
+system_prompt: >-
+  You are an expert LaTeX translator.
+  Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology.
+  Output ONLY the corrected text.

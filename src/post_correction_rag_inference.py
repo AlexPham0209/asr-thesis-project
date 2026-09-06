@@ -6,6 +6,7 @@ from datetime import datetime
 import functools
 import gc
 
+import chromadb
 import torch
 import torchaudio
 import datasets
@@ -128,50 +129,27 @@ def main(cfg: DictConfig):
     del asr_processor
     gc.collect()
     torch.cuda.empty_cache()
+    
+    # Getting system prompt
 
-    # 3. Stage 2: LLM & RAG Setup
-    llm_base_model = cfg.get("llm_base_model", "meta-llama/Llama-3-8b-Instruct")
-    llm_peft_path = cfg.get("llm_peft_path", None)
+    # Getting ChromaDB vector database
+    db_path = cfg.get("db_path", "./vector_db")
+    collection_name = cfg.get("collection_name", "speech2latex")
+    client = chromadb.PersistentClient(path=db_path)
+    collection = client.get_or_create_collection(name=collection_name)
+    
+    # Creating generator
+    generator = hydra.utils.instantiate(cfg.generator)
     system_prompt = cfg.get(
         "system_prompt",
         "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
     )
 
-    logger.info(f"Loading LLM model: {llm_base_model}")
-    llm_tokenizer = AutoTokenizer.from_pretrained(llm_base_model)
-
-    # Must be set to left-padding for batched generation slicing in PostCorrectionRAG
-    llm_tokenizer.padding_side = "left"
-    if llm_tokenizer.pad_token is None:
-        llm_tokenizer.pad_token = llm_tokenizer.eos_token
-
-    llm_model = AutoModelForCausalLM.from_pretrained(
-        llm_base_model,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto",
-    )
-
-    if llm_peft_path and os.path.exists(llm_peft_path):
-        logger.info(f"Applying LoRA weights from: {llm_peft_path}")
-        llm_model = PeftModel.from_pretrained(llm_model, llm_peft_path)
-    else:
-        logger.warning(
-            "No valid LoRA path provided or found. Running with base LLM only."
-        )
-
-    llm_model.eval()
-
-    # Getting ChromaDB vector database
-    db_path = cfg.get("db_path", "./vector_db")
-    collection_name = cfg.get("collection_name", "speech2latex")
-
     logger.info("Initializing RAG module...")
     rag = PostCorrectionRAG(
         system_prompt=system_prompt,
-        model=llm_model,
-        tokenizer=llm_tokenizer,
-        db_path=db_path,
-        collection_name=collection_name,
+        generator=generator, 
+        collection=collection
     )
 
     logger.info("Executing Stage 2: RAG Post-Correction...")
