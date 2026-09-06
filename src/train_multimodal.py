@@ -54,7 +54,7 @@ load_dotenv()
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-TOKEN = os.getenv("TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 
 def inference(model, processor, normalizer, dataset):
@@ -125,7 +125,7 @@ def main(cfg: DictConfig):
     # Model init wrapper for Optuna HPO
     def model_init(trial):
         # Hydra will instantiate your model, e.g., AutoModelForCausalLM (QwenAudio) or AutoModelForSpeechSeq2Seq
-        model = hydra.utils.instantiate(cfg.model, token=TOKEN)
+        model = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
         
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)

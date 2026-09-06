@@ -61,7 +61,7 @@ load_dotenv()
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-TOKEN = os.getenv("TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 
 def inference(model, tokenizer, normalizer, dataset):
@@ -131,7 +131,7 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model, token=TOKEN)
+        model = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
         return model
 
     model = model_init(None)

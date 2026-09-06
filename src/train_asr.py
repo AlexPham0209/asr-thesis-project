@@ -63,7 +63,7 @@ load_dotenv()
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-TOKEN = os.getenv("TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
@@ -220,7 +220,7 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model, token=TOKEN)
+        model = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
         model = model(
             pad_token_id=processor.tokenizer.pad_token_id,
             vocab_size=len(processor.tokenizer),
@@ -286,7 +286,7 @@ def main(cfg: DictConfig):
     model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
-    studies_directory = os.path.join("studies", model_directory_name)
+    studies_directory = os.path.join("studies", model_name)
     os.makedirs(studies_directory, exist_ok=True)
 
     # Creating trainer
