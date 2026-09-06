@@ -1,20 +1,7 @@
 import chromadb
 import datasets
 
-
-def combined_filter(sample):
-    # Language check
-    if sample["language"] != "eng":
-        return False
-
-    # Equation quality checks
-    text = sample["whisper_text"]
-
-    audio_data = sample["audio_path"].get_all_samples().data
-    if not (audio_data.ndim == 2 and audio_data.shape[0] == 1):
-        return False
-
-    return True
+from data.filters import combined_filter
 
 
 def main():
@@ -25,7 +12,7 @@ def main():
     dataset = dataset.filter(combined_filter, num_proc=10)
 
     client = chromadb.PersistentClient(path="./vector_db")
-    collection = client.get_or_create_collection(name="speech2latex")
+    collection = client.get_or_create_collection(name="speech2latex-text")
 
     source_sentences = dataset["whisper_text"]
     target_sentences = [{"target": target} for target in dataset["sentence"]]

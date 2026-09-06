@@ -176,7 +176,9 @@ def main(cfg: DictConfig):
     # Model name and directory
     model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory_name = model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    model_directory_name = (
+        model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    )
     model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
@@ -225,7 +227,7 @@ def main(cfg: DictConfig):
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
-            
+
             create_hyperparameter_diagrams(
                 name=model_name,
                 model_directory=model_directory,
@@ -259,18 +261,23 @@ def main(cfg: DictConfig):
             )
 
     # Training and logging metrics
-    train_results = trainer.train(resume_from_checkpoint=cfg.get("use_timestamp", False))
+    train_results = trainer.train(
+        resume_from_checkpoint=cfg.get("use_timestamp", False)
+    )
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-    
+
     log_history = trainer.state.log_history
-    
+
     # Save log history as a JSON file
     with open(os.path.join(model_directory, "log_history.json"), "w") as f:
         json.dump(log_history, f, indent=4)
 
     # Evaluate using the validation dataset
-    with torch.autocast(device_type=device, dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat166):
+    with torch.autocast(
+        device_type=device,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat166,
+    ):
         valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)

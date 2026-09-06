@@ -65,6 +65,7 @@ logger = logging.getLogger("finetuning")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+
 def create_seq2seq_trainer(
     cfg, model, processor, train, valid, compute_metrics, data_collator, model_directory
 ):
@@ -282,7 +283,9 @@ def main(cfg: DictConfig):
     # Model name and directory
     model_name = cfg.get("model_name", "model")
     model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory_name = model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    model_directory_name = (
+        model_name_timestamp if cfg.get("use_timestamp", False) else model_name
+    )
     model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
@@ -385,7 +388,9 @@ def main(cfg: DictConfig):
             )
 
     # Training model with best run hyperparameters
-    train_results = trainer.train(resume_from_checkpoint=cfg.get("use_timestamp", False))
+    train_results = trainer.train(
+        resume_from_checkpoint=cfg.get("use_timestamp", False)
+    )
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
 
@@ -396,7 +401,10 @@ def main(cfg: DictConfig):
         json.dump(log_history, f, indent=4)
 
     # Evaluate using the validation dataset
-    with torch.autocast(device_type=device, dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16):
+    with torch.autocast(
+        device_type=device,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16,
+    ):
         valid_metrics = trainer.evaluate()
 
     trainer.log_metrics("eval", valid_metrics)

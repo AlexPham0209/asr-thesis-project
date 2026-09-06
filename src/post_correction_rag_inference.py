@@ -29,6 +29,7 @@ from utils.latex_metrics import LatexInContextMetrics
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
+HF_TOKEN = os.path.join("HF_TOKEN")
 
 
 def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
@@ -129,7 +130,7 @@ def main(cfg: DictConfig):
     del asr_processor
     gc.collect()
     torch.cuda.empty_cache()
-    
+
     # Getting system prompt
 
     # Getting ChromaDB vector database
@@ -137,7 +138,7 @@ def main(cfg: DictConfig):
     collection_name = cfg.get("collection_name", "speech2latex")
     client = chromadb.PersistentClient(path=db_path)
     collection = client.get_or_create_collection(name=collection_name)
-    
+
     # Creating generator
     generator = hydra.utils.instantiate(cfg.generator)
     system_prompt = cfg.get(
@@ -147,18 +148,13 @@ def main(cfg: DictConfig):
 
     logger.info("Initializing RAG module...")
     rag = PostCorrectionRAG(
-        system_prompt=system_prompt,
-        generator=generator, 
-        collection=collection
+        system_prompt=system_prompt, generator=generator, collection=collection
     )
 
     logger.info("Executing Stage 2: RAG Post-Correction...")
     rag_fn = functools.partial(run_rag_batch, rag=rag)
 
     dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
-
-    logger.info(dataset["predictions"])
-    logger.info(dataset["references"])
 
     # 4. Compute Metrics
     logger.info("Computing Metrics...")

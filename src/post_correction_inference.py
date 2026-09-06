@@ -30,7 +30,8 @@ load_dotenv()
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-TOKEN = os.getenv("TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
 
 def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     """Stage 1: Audio -> Raw ASR Predictions"""

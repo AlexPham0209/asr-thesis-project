@@ -47,7 +47,10 @@ from utils.metrics import (
 )
 
 # Crucial for padding variable-length audio features and text labels differently
-from data.data_collator import DataCollatorSpeechCausalLMWithPadding, DataCollatorSpeechSeq2SeqWithPadding
+from data.data_collator import (
+    DataCollatorSpeechCausalLMWithPadding,
+    DataCollatorSpeechSeq2SeqWithPadding,
+)
 
 load_dotenv()
 
@@ -65,32 +68,36 @@ def inference(model, processor, normalizer, dataset):
     model.eval()
     for sample in dataset:
         # Assuming the dataset returns raw audio arrays and target text
-        audio = sample["audio"] 
+        audio = sample["audio"]
         label_text = sample["label"]
 
         # Process audio directly into input_features/input_values depending on the model
         inputs = processor(
-            audios=audio["array"], 
-            sampling_rate=audio["sampling_rate"], 
-            return_tensors="pt"
+            audios=audio["array"],
+            sampling_rate=audio["sampling_rate"],
+            return_tensors="pt",
         ).to(device)
 
         with torch.no_grad():
             generated_ids = model.generate(
-                **inputs, 
+                **inputs,
                 max_new_tokens=256,
-                pad_token_id=processor.tokenizer.pad_token_id
+                pad_token_id=processor.tokenizer.pad_token_id,
             )
 
-        # For Encoder-Decoder models, we don't need to strip the prompt. 
+        # For Encoder-Decoder models, we don't need to strip the prompt.
         # For Decoder-only multimodal models (like QwenAudio), you might still need to split.
         if model.config.is_encoder_decoder:
-            pred_str = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            pred_str = processor.batch_decode(generated_ids, skip_special_tokens=True)[
+                0
+            ]
         else:
             # Strip prompt tokens if it's a causal LM architecture
             # Adjust index based on how the processor constructs inputs
             generated_ids = generated_ids[:, inputs.input_ids.shape[-1] :]
-            pred_str = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            pred_str = processor.batch_decode(generated_ids, skip_special_tokens=True)[
+                0
+            ]
 
         predictions.append(pred_str)
         labels.append(label_text)
@@ -126,12 +133,12 @@ def main(cfg: DictConfig):
     def model_init(trial):
         # Hydra will instantiate your model, e.g., AutoModelForCausalLM (QwenAudio) or AutoModelForSpeechSeq2Seq
         model = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
-        
+
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
             config = LoraConfig(**lora_config)
             model = get_peft_model(model, config)
-        
+
             trainable_parameters, all_parameters = model.get_nb_trainable_parameters()
             percentage = trainable_parameters / all_parameters
             logger.info(
@@ -140,10 +147,10 @@ def main(cfg: DictConfig):
         return model
 
     model = model_init(None)
-    
+
     # 1. Swap Tokenizer for Processor (Crucial for Audio models)
     processor = hydra.utils.instantiate(cfg.processor)
-    
+
     normalizer = (
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     )
@@ -164,19 +171,18 @@ def main(cfg: DictConfig):
         processor=processor,  # Changed from tokenizer
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
-    
+
     # Assuming preprocess_fn extracts audio features and tokenizes text targets
     train = preprocess_fn(train)
     test = preprocess_fn(test)
 
     # 4. Metrics setup (using standard create_metric for WER/CER mapping)
-    compute_metrics = create_metric(
-        processor=processor, 
-        normalizer=latex_normalizer
-    )
+    compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
     model_name = cfg.get("model_name", "model")
-    model_directory_name = f"{model_name}_{timestamp}" if cfg.get("use_timestamp", False) else model_name
+    model_directory_name = (
+        f"{model_name}_{timestamp}" if cfg.get("use_timestamp", False) else model_name
+    )
     model_directory = os.path.join(cfg.model_directory, model_directory_name)
 
     # Studies storage folder
@@ -187,7 +193,7 @@ def main(cfg: DictConfig):
     training_args = Seq2SeqTrainingArguments(
         **cfg.training,
         output_dir=model_directory,
-        predict_with_generate=True, # Forces the trainer to use model.generate() for evaluation metrics
+        predict_with_generate=True,  # Forces the trainer to use model.generate() for evaluation metrics
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported(),
         # Remove SFT-specific args like dataset_text_field="messages", assistant_only_loss=True
@@ -208,7 +214,7 @@ def main(cfg: DictConfig):
         compute_metrics=compute_metrics,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
-    
+
     # Deleting pre-evaluation model and clearing cache
     del model
     torch.cuda.empty_cache()
@@ -264,15 +270,18 @@ def main(cfg: DictConfig):
     train_results = trainer.train()
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
-    
+
     log_history = trainer.state.log_history
     with open(os.path.join(model_directory, "log_history.json"), "w") as f:
         json.dump(log_history, f, indent=4)
 
     # Evaluate (Automatically triggers predict_with_generate=True for metrics like WER/CER)
-    with torch.autocast(device_type=device, dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16):
+    with torch.autocast(
+        device_type=device,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16,
+    ):
         valid_metrics = trainer.evaluate()
-        
+
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
 

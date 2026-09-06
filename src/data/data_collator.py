@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from transformers import AutoProcessor
 
+
 @dataclass
 class DataCollatorCTCWithPadding:
     processor: AutoProcessor
@@ -75,6 +76,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
         return batch
 
+
 @dataclass
 class DataCollatorSpeechCausalLMWithPadding:
     processor: Any
@@ -88,11 +90,12 @@ class DataCollatorSpeechCausalLMWithPadding:
         # We must keep these for Decoder-only models like QwenAudio
         text_features = [
             {
-                "input_ids": feature["input_ids"], 
-                "attention_mask": feature["attention_mask"]
-            } for feature in features
+                "input_ids": feature["input_ids"],
+                "attention_mask": feature["attention_mask"],
+            }
+            for feature in features
         ]
-        
+
         batch = self.processor.tokenizer.pad(
             text_features, padding=self.padding, return_tensors="pt"
         )
@@ -112,13 +115,21 @@ class DataCollatorSpeechCausalLMWithPadding:
 
         # 3. Pad Audio Features
         # QwenAudio/Qwen2Audio might output 'audio_values' or 'input_features' depending on the version
-        audio_key = "input_features" if "input_features" in features[0] else (
-            "audio_values" if "audio_values" in features[0] else None
+        audio_key = (
+            "input_features"
+            if "input_features" in features[0]
+            else ("audio_values" if "audio_values" in features[0] else None)
         )
 
-        audio_keys = [k for k in ("input_features", "audio_values", "feature_attention_mask") if k in features[0]]
+        audio_keys = [
+            k
+            for k in ("input_features", "audio_values", "feature_attention_mask")
+            if k in features[0]
+        ]
         if audio_keys:
-            audio_features = [{k: feature[k] for k in audio_keys} for feature in features]
+            audio_features = [
+                {k: feature[k] for k in audio_keys} for feature in features
+            ]
             audio_padding = True if self.padding == "longest" else self.padding
             audio_batch = self.processor.feature_extractor.pad(
                 audio_features, padding=audio_padding, return_tensors="pt"

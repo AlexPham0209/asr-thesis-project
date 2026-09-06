@@ -5,6 +5,7 @@ from data.normalizer import contains_equation, has_valid_equation
 from transformers import AutoTokenizer
 from data.filters import combined_filter
 
+
 # 1. Add label=None to allow calling without arguments
 def create_messages(label=None):
     messages = [
@@ -67,26 +68,23 @@ def preprocess_speech2latex(dataset, processor, normalizer):
         # 4. Process Inputs (padding=False is mandatory here)
         # We pass audio.numpy() as Hugging Face processors typically prefer numpy for audio features
         full_inputs = processor(
-            text=full_text, 
-            audios=audio.numpy(), 
+            text=full_text,
+            audios=audio.numpy(),
             sampling_rate=target_sampling_rate,
-            return_tensors="pt", 
-            padding=False 
+            return_tensors="pt",
+            padding=False,
         )
-        
+
         # 5. Create labels array and mask out the prompt (using -100)
         # Tokenize just the prompt to find out how many tokens it takes
         prompt_inputs = processor(
-            text=prompt_text,
-            audios=audio.numpy(),
-            return_tensors="pt",
-            padding=False
+            text=prompt_text, audios=audio.numpy(), return_tensors="pt", padding=False
         )
         prompt_length = prompt_inputs["input_ids"].shape[-1]
-        
+
         # Copy input_ids to create the labels
         labels = full_inputs["input_ids"].clone()
-        
+
         # Mask out the prompt tokens so the model only calculates loss on the generated label
         labels[0, :prompt_length] = -100
 
@@ -96,10 +94,10 @@ def preprocess_speech2latex(dataset, processor, normalizer):
             "attention_mask": full_inputs["attention_mask"].squeeze(0),
             "labels": labels.squeeze(0),
             "input": prompt_text,  # Kept string for inference loop to use
-            "label": label,         # Kept string for WER/CER evaluation calculation
-            "prompt_length": prompt_length
+            "label": label,  # Kept string for WER/CER evaluation calculation
+            "prompt_length": prompt_length,
         }
-        
+
         # Dynamically add audio specific features (e.g., QwenAudio outputs `audio_values`)
         # Squeeze them so the data collator can batch them properly later
         for key in full_inputs.keys():
@@ -109,5 +107,7 @@ def preprocess_speech2latex(dataset, processor, normalizer):
         return processed_sample
 
     # Map across the entire dataset. remove_columns ensures we don't carry over unbatched old columns.
-    dataset = dataset.map(preprocess, batched=False, remove_columns=dataset.column_names)
+    dataset = dataset.map(
+        preprocess, batched=False, remove_columns=dataset.column_names
+    )
     return dataset
