@@ -1,42 +1,41 @@
+from typing import Any, List, Union
 import chromadb
 import torch
-import torchaudio.functional as F
+
+from embeddings.embedding import BaseEmbedding
+from generator.generator import BaseGenerator
 
 
-class MultimodalRAG:
+class MultiModalRAG:
     def __init__(
-        self, system_prompt, llm_model, llm_processor, db_path, collection_name
+        self,
+        system_prompt: str,
+        generator: BaseGenerator,
+        embedding: BaseEmbedding,
+        collection: chromadb.Collection,
     ):
         self.system_prompt = system_prompt
-        self.client = chromadb.PersistentClient(path=db_path)
-        self.collection = self.client.get_or_create_collection(name=collection_name)
+        self.generator = generator
+        self.embedding = embedding
+        self.collection = collection
 
-        self.llm_processor = llm_processor
-        self.llm_processor.tokenizer.padding_side = "left"
+    def retrieve(
+        self, inputs: Union[str, torch.Tensor, List[Any]], top_n: int = 3
+    ) -> List[List[str]]:
+        # Normalize single inputs into a list
+        if not isinstance(inputs, list):
+            inputs = [inputs]
 
-        if self.llm_processor.tokenizer.pad_token is None:
-            self.llm_processor.tokenizer.pad_token = (
-                self.llm_processor.tokenizer.eos_token
-            )
+        # Convert PyTorch Tensors to list format if necessary
+        formatted_inputs = []
+        for inp in inputs:
+            if isinstance(inp, torch.Tensor):
+                formatted_inputs.append(inp.detach().cpu().numpy().tolist())
+            else:
+                formatted_inputs.append(inp)
 
-        self.llm_model = llm_model
-        self.target_sampling_rate = self.llm_processor.feature_extractor.sampling_rate
+        embeddings_list = self.embedding(formatted_inputs)
 
-    def retrieve(self, asr_embeddings: list | torch.Tensor, top_n=3):
-        # 1. Convert PyTorch tensors to standard Python lists of lists for Chroma
-        if isinstance(asr_embeddings, torch.Tensor):
-            # Ensure it's 2D: [batch_size, embedding_dim]
-            if asr_embeddings.ndim == 1:
-                asr_embeddings = asr_embeddings.unsqueeze(0)
-            embeddings_list = asr_embeddings.cpu().numpy().tolist()
-        else:
-            # Assume it's a list of lists or list of 1D tensors
-            embeddings_list = [
-                emb.cpu().numpy().tolist() if isinstance(emb, torch.Tensor) else emb
-                for emb in asr_embeddings
-            ]
-
-        # 2. Query using 'query_embeddings' instead of 'query_texts'
         results = self.collection.query(
             query_embeddings=embeddings_list, n_results=top_n
         )
@@ -57,75 +56,12 @@ class MultimodalRAG:
 
         return batch_examples
 
-    def inference(self, audios: list):
-        is_single = not isinstance(audios, list)
-        if is_single:
-            audios = [audios]
+    def inference(self, inputs: Union[str, torch.Tensor, List[Any]]) -> Union[str, List[str]]:
+        # FIXED: Correctly detect single inputs whether str or torch.Tensor
+        is_single = not isinstance(inputs, list)
+        queries = [inputs] if is_single else inputs
 
-        # 3. Retrieve using the ASR embeddings rather than the text prompt
-        batched_examples = self.retrieve(audios)
+        batched_examples = self.retrieve(queries)
+        res = self.generator.generate(inputs=queries, batched_examples=batched_examples)
 
-        formatted_prompts = []
-        processed_audios = []
-
-        for i, audio in enumerate(audios):
-            # Extract raw tensor from torchcodec object
-            samples = audio.get_all_samples()
-            audio = samples.data.squeeze(dim=0)
-
-            if samples.sample_rate != self.target_sampling_rate:
-                audio = F.resample(
-                    audio,
-                    orig_freq=samples.sample_rate,
-                    new_freq=self.target_sampling_rate,
-                )
-
-            processed_audios.append(audio)
-
-            examples_str = "\n\n".join(batched_examples[i])
-            system_prompt = (
-                f"{self.system_prompt}\n\n<examples>\n{examples_str}\n</examples>"
-            )
-
-            message = [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "audio", "audio_url": f"torchcodec_stream_{i}"},
-                        {
-                            "type": "text",
-                            "text": "Transcribe this and fix the formatting",
-                        },
-                    ],
-                },
-            ]
-
-            formatted_prompt = self.llm_processor.apply_chat_template(
-                message, tokenize=False, add_generation_prompt=True
-            )
-            formatted_prompts.append(formatted_prompt)
-
-        inputs = self.llm_processor(
-            text=formatted_prompts,
-            audios=processed_audios,
-            return_tensors="pt",
-            padding=True,
-        ).to(self.llm_model.device)
-
-        with torch.no_grad():
-            outputs = self.llm_model.generate(
-                **inputs,
-                max_new_tokens=256,
-                pad_token_id=self.llm_processor.tokenizer.pad_token_id,
-                eos_token_id=self.llm_processor.tokenizer.eos_token_id,
-                temperature=0.2,
-                do_sample=True,
-            )
-
-        generated_ids = [
-            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, outputs)
-        ]
-
-        res = self.llm_processor.batch_decode(generated_ids, skip_special_tokens=True)
         return res[0] if is_single else res
