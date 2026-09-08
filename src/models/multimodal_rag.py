@@ -28,11 +28,11 @@ class MultiModalRAG:
 
         # Convert PyTorch Tensors to list format if necessary
         formatted_inputs = []
-        for inp in inputs:
-            if isinstance(inp, torch.Tensor):
-                formatted_inputs.append(inp.detach().cpu().numpy().tolist())
+        for input in inputs:
+            if isinstance(input, torch.Tensor):
+                formatted_inputs.append(input.detach().cpu().numpy().tolist())
             else:
-                formatted_inputs.append(inp)
+                formatted_inputs.append(input)
 
         embeddings_list = self.embedding(formatted_inputs)
 
@@ -56,7 +56,9 @@ class MultiModalRAG:
 
         return batch_examples
 
-    def inference(self, inputs: Union[str, torch.Tensor, List[Any]]) -> Union[str, List[str]]:
+    def inference(
+        self, inputs: Union[str, torch.Tensor, List[Any]]
+    ) -> Union[str, List[str]]:
         # FIXED: Correctly detect single inputs whether str or torch.Tensor
         is_single = not isinstance(inputs, list)
         queries = [inputs] if is_single else inputs
