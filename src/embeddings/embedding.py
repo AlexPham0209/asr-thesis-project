@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 from transformers import AutoFeatureExtractor, AutoModel
+import torch.nn.functional as F
 
 
 class BaseEmbedding(ABC):
@@ -30,5 +31,6 @@ class CLAPEmbedding(BaseEmbedding):
 
         with torch.inference_mode():
             audio_features = self.model.get_audio_features(**inputs)
+            audio_features = F.normalize(audio_features, p=2, dim=-1)
 
         return audio_features.cpu().tolist()

@@ -26,15 +26,7 @@ class MultiModalRAG:
         if not isinstance(inputs, list):
             inputs = [inputs]
 
-        # Convert PyTorch Tensors to list format if necessary
-        formatted_inputs = []
-        for input in inputs:
-            if isinstance(input, torch.Tensor):
-                formatted_inputs.append(input.detach().cpu().numpy().tolist())
-            else:
-                formatted_inputs.append(input)
-
-        embeddings_list = self.embedding(formatted_inputs)
+        embeddings_list = self.embedding(input=inputs)
 
         results = self.collection.query(
             query_embeddings=embeddings_list, n_results=top_n

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import logging
@@ -7,6 +8,7 @@ import functools
 import gc
 
 import chromadb
+from dotenv import load_dotenv
 import torch
 import torchaudio
 import datasets
@@ -27,11 +29,12 @@ from models.multimodal_rag import MultiModalRAG
 from utils.logger import initialize_loggers
 from utils.latex_metrics import LatexInContextMetrics
 
+load_dotenv()
+
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-HF_TOKEN = os.path.join("HF_TOKEN")
-
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 def run_rag_batch(batch, rag: MultiModalRAG, target_sampling_rate):
     audios = []
@@ -46,7 +49,7 @@ def run_rag_batch(batch, rag: MultiModalRAG, target_sampling_rate):
                 orig_freq=samples.sample_rate,
                 new_freq=target_sampling_rate,
             )
-            audios.append(audio_tensor.numpy())
+            audios.append(audio_tensor)
             
     corrected_transcriptions = rag.inference(inputs=audios)
     return {"predictions": corrected_transcriptions}
@@ -82,7 +85,10 @@ def main(cfg: DictConfig):
     db_path = cfg.get("db_path", "./vector_db")
     collection_name = cfg.get("collection_name", "speech2latex")
     client = chromadb.PersistentClient(path=db_path)
-    collection = client.get_or_create_collection(name=collection_name)
+    collection = client.get_or_create_collection(
+        name=collection_name,
+        metadata={"hnsw:space": "cosine"}
+    )
 
     # Creating generator
     generator = hydra.utils.instantiate(cfg.generator)
@@ -97,7 +103,11 @@ def main(cfg: DictConfig):
         system_prompt=system_prompt, generator=generator, embedding=embedding, collection=collection
     )
     
-    rag_fn = functools.partial(run_rag_batch, rag=rag)
+    rag_fn = functools.partial(
+        run_rag_batch, 
+        rag=rag,
+        target_sampling_rate=getattr(embedding, "sampling_rate", 16000)
+    )
     dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
 
     # 4. Compute Metrics
@@ -111,6 +121,13 @@ def main(cfg: DictConfig):
     logger.info("------- Final Evaluation Results -------")
     for metric_name, value in results.items():
         logger.info(f"{metric_name}: {value}")
+    
+    
+    # Saving metrics
+    results_directory = cfg.get("results_directory", "results")
+    os.makedirs(results_directory, exist_ok=True)
+    with open(os.path.join(results_directory, "results.json"), "w") as f:
+        json.dump(results, f, indent=4)
 
 
 if __name__ == "__main__":

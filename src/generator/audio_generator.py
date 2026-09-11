@@ -1,16 +1,15 @@
 from abc import ABC, abstractmethod
 import asyncio
+import io
 import logging
 import os
 import warnings
-from typing import Union
+from typing import Union, List
 
-import chromadb
 from google import genai
 from google.genai import types
-from peft import PeftModel
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import torchaudio
 import nest_asyncio
 
 from generator.generator import BaseGenerator
@@ -26,20 +25,43 @@ class GeminiMultimodalGenerator(BaseGenerator):
         model_name: str = "gemini-2.5-flash",
         max_concurrent: int = 10,
         use_async: bool = False,
+        sample_rate: int = 16000, # CRITICAL: Ensure this matches the RAG pipeline's resample target
     ):
         self.system_prompt = system_prompt
         self.max_concurrent = max_concurrent
         self.use_async = use_async
         self.client = genai.Client()
         self.model_name = model_name
+        self.sample_rate = sample_rate
+
+    def _tensor_to_wav_bytes(self, audio_tensor: torch.Tensor) -> bytes:
+        """Helper to convert a PyTorch tensor to WAV bytes in memory."""
+        # Ensure tensor is safely on CPU and formatted as float32 for WAV conversion
+        audio_tensor = audio_tensor.detach().cpu().to(torch.float32)
+
+        # torchaudio expects shape [channels, frames]. 
+        # If it's a 1D tensor [frames], add a channel dimension.
+        if audio_tensor.ndim == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
+            
+        buffer = io.BytesIO()
+        torchaudio.save(buffer, audio_tensor, self.sample_rate, format="wav")
+        buffer.seek(0)
+        return buffer.read()
 
     async def generate_prompt(
-        self, dynamic_system_prompt: str, prompt_text: str, semaphore: asyncio.Semaphore
+        self, dynamic_system_prompt: str, audio_tensor: torch.Tensor, semaphore: asyncio.Semaphore
     ) -> str:
+        
+        audio_bytes = self._tensor_to_wav_bytes(audio_tensor)
+        content = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+        
+        prompt_text = "Transcribe and correct the following audio using the examples provided:"
+            
         async with semaphore:
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
-                contents=prompt_text,
+                contents=[prompt_text, content],
                 config=types.GenerateContentConfig(
                     system_instruction=dynamic_system_prompt,
                     temperature=0.2,
@@ -49,49 +71,56 @@ class GeminiMultimodalGenerator(BaseGenerator):
             return response.text or ""
 
     async def _generate_async(
-        self, inputs: list[str], batched_examples: list[list[str]]
-    ) -> list[str]:
+        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
+    ) -> List[str]:
         # Initialize semaphore inside the running event loop
         semaphore = asyncio.Semaphore(self.max_concurrent)
 
         tasks = []
-        for input_text, examples in zip(inputs, batched_examples):
+        for audio_tensor, examples in zip(inputs, batched_examples):
             examples_str = "\n\n".join(examples)
             dynamic_system_prompt = (
                 f"{self.system_prompt}\n\n"
                 f"Use the following pairs of text and LaTeX as examples:\n{examples_str}"
             )
             tasks.append(
-                self.generate_prompt(dynamic_system_prompt, input_text, semaphore)
+                self.generate_prompt(dynamic_system_prompt, audio_tensor, semaphore)
             )
 
         return await asyncio.gather(*tasks)
 
     def _generate(
-        self, inputs: list[str], batched_examples: list[list[str]]
-    ) -> list[str]:
+        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
+    ) -> List[str]:
         responses = []
-        for input_audio, examples in zip(inputs, batched_examples):
+        for audio_tensor, examples in zip(inputs, batched_examples):
             examples_str = "\n\n".join(examples)
             dynamic_system_prompt = (
                 f"{self.system_prompt}\n\n"
                 f"Use the following pairs of text and LaTeX as examples:\n{examples_str}"
             )
+            
+            audio_bytes = self._tensor_to_wav_bytes(audio_tensor)
+            content = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+            prompt_text = "Transcribe and correct the following audio using the examples provided:"
 
-            response = self.client.interactions.create(
+            response = self.client.models.generate_content(
                 model=self.model_name,
-                input=[
-                    {"type": "text", "text": "Describe this audio clip"},
-                ],
+                contents=[prompt_text, content],
+                config=types.GenerateContentConfig(
+                    system_instruction=dynamic_system_prompt,
+                    temperature=0.2,
+                    max_output_tokens=256,
+                )
             )
-            # Fixed: Append text, not the response object
+            
             responses.append(response.text or "")
 
         return responses
 
     def generate(
-        self, inputs: list[str], batched_examples: list[list[str]]
-    ) -> list[str]:
+        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
+    ) -> List[str]:
 
         if self.use_async:
             try:

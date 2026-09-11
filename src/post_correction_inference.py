@@ -203,6 +203,12 @@ def main(cfg: DictConfig):
     logger.info("------- Final Evaluation Results -------")
     for metric_name, value in results.items():
         logger.info(f"{metric_name}: {value}")
+        
+    # Saving metrics
+        results_directory = cfg.get("results_directory", "results")
+        os.makedirs(results_directory, exist_ok=True)
+        with open(os.path.join(results_directory, "results.json"), "w") as f:
+            json.dump(results, f, indent=4)
 
 
 if __name__ == "__main__":

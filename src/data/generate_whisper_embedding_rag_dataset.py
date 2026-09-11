@@ -3,9 +3,10 @@ import chromadb
 import datasets
 import torch
 import torch.nn.functional as F
-from transformers import ClapModel, ClapProcessor
+from transformers import WhisperProcessor
 
 from data.filters import combined_filter
+from models.clap_model import WhisperEmbedding
 
 
 def main():
@@ -13,8 +14,10 @@ def main():
     print(f"Using device: {device}")
 
     # 1. Use proper CLAP model and processor
-    model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to(device)
-    processor = ClapProcessor.from_pretrained("laion/clap-htsat-unfused")
+    processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
+    embedding = WhisperEmbedding(
+        model_name="openai/whisper-large-v3"
+    )
     model.eval()  # Disable dropout/batchnorm updates
 
     # 2. Load and filter dataset
@@ -54,7 +57,6 @@ def main():
 
         with torch.no_grad():
             text_features = model.get_text_features(**inputs)
-            
             # Normalize embeddings for Cosine distance
             text_features = F.normalize(text_features, p=2, dim=-1)
             embeddings = text_features.cpu().tolist()
