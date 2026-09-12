@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from transformers import ClapModel, ClapProcessor
 
-from data.filters import combined_filter
+from filters import combined_filter
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     client = chromadb.PersistentClient(path="./vector_db")
     collection = client.get_or_create_collection(
         name="speech2latex-CLAP",
-        metadata={"hnsw:space": "cosine"}  # Set metric to cosine similarity
+        metadata={"hnsw:space": "cosine"},  # Set metric to cosine similarity
     )
 
     total_docs = len(dataset)
@@ -37,8 +37,9 @@ def main():
     print(f"Generating embeddings and upserting {total_docs} documents...")
 
     # 4. Direct streaming inference and upserting (No map caching overhead)
-    for i in range(0, total_docs, GPU_BATCH_SIZE):
-        batch = dataset[i : i + GPU_BATCH_SIZE]
+    for start in range(0, total_docs, GPU_BATCH_SIZE):
+        end = min(total_docs, start + GPU_BATCH_SIZE)
+        batch = dataset[start:end]
 
         source_sentences = batch["whisper_text"]
         target_sentences = batch["sentence"]
@@ -53,14 +54,14 @@ def main():
         ).to(device)
 
         with torch.no_grad():
-            text_features = model.get_text_features(**inputs)
-            
+            text_features = model(inputs)
+
             # Normalize embeddings for Cosine distance
             text_features = F.normalize(text_features, p=2, dim=-1)
             embeddings = text_features.cpu().tolist()
 
         # Prepare payload
-        batch_ids = [f"id_{j}" for j in range(i, i + len(source_sentences))]
+        batch_ids = [f"id_{j}" for j in range(start, end)]
         batch_meta = [{"target": t} for t in target_sentences]
 
         # Upsert directly to Chroma
@@ -71,8 +72,10 @@ def main():
             ids=batch_ids,
         )
 
-        if (i // GPU_BATCH_SIZE) % 10 == 0 or (i + GPU_BATCH_SIZE) >= total_docs:
-            processed = min(i + GPU_BATCH_SIZE, total_docs)
+        if (start // GPU_BATCH_SIZE) % 10 == 0 or (
+            start + GPU_BATCH_SIZE
+        ) >= total_docs:
+            processed = min(start + GPU_BATCH_SIZE, total_docs)
             print(f"Processed & Upserted {processed} / {total_docs} items...")
 
     print("Vector database created successfully.")

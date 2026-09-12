@@ -1,137 +1,113 @@
-from abc import ABC, abstractmethod
-import asyncio
-import io
-import logging
-import os
-import warnings
-from typing import Union, List
-
-import chromadb
-from google import genai
-from google.genai import types
-from peft import PeftModel
-import torch
 import torchaudio
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import nest_asyncio
+import torch
 
-from generator.generator import BaseGenerator
-
-warnings.filterwarnings("ignore", category=UserWarning)
-logger = logging.getLogger("inference")
+from data.normalizer import contains_equation, has_valid_equation
+from transformers import AutoTokenizer
+from data.filters import combined_filter
 
 
-class GeminiMultimodalGenerator(BaseGenerator):
-    def __init__(
-        self,
-        system_prompt: str,
-        model_name: str = "gemini-2.5-flash",
-        max_concurrent: int = 10,
-        use_async: bool = False,
-        sample_rate: int = 16000, # Added sample rate for WAV conversion
-    ):
-        self.system_prompt = system_prompt
-        self.max_concurrent = max_concurrent
-        self.use_async = use_async
-        self.client = genai.Client()
-        self.model_name = model_name
-        self.sample_rate = sample_rate
+# 1. Add label=None to allow calling without arguments
+def create_messages(label=None):
+    messages = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "You are an expert transcription editor. Correct the following clip of audio for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "audio"},
+            ],
+        },
+    ]
 
-    def _tensor_to_wav_bytes(self, audio_tensor: torch.Tensor) -> bytes:
-        """Helper to convert a torchcodec tensor to WAV bytes in memory."""
-        # torchaudio expects shape [channels, frames]. 
-        # If it's a 1D tensor [frames], add a channel dimension.
-        if audio_tensor.ndim == 1:
-            audio_tensor = audio_tensor.unsqueeze(0)
-            
-        buffer = io.BytesIO()
-        torchaudio.save(buffer, audio_tensor, self.sample_rate, format="wav")
-        buffer.seek(0)
-        return buffer.read()
+    if label:
+        messages.append(
+            {"role": "assistant", "content": [{"type": "text", "text": label}]}
+        )
 
-    async def generate_prompt(
-        self, dynamic_system_prompt: str, audio_tensor: torch.Tensor, semaphore: asyncio.Semaphore
-    ) -> str:
-        
-        audio_bytes = self._tensor_to_wav_bytes(audio_tensor)
-        content = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
-            
-        async with semaphore:
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=[content],
-                config=types.GenerateContentConfig(
-                    system_instruction=dynamic_system_prompt,
-                    temperature=0.2,
-                    max_output_tokens=256,
-                ),
-            )
-            return response.text or ""
+    return messages
 
-    async def _generate_async(
-        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
-    ) -> List[str]:
-        # Initialize semaphore inside the running event loop
-        semaphore = asyncio.Semaphore(self.max_concurrent)
 
-        tasks = []
-        for audio_tensor, examples in zip(inputs, batched_examples):
-            examples_str = "\n\n".join(examples)
-            dynamic_system_prompt = (
-                f"{self.system_prompt}\n\n"
-                f"Use the following pairs of text and LaTeX as examples:\n{examples_str}"
-            )
-            tasks.append(
-                self.generate_prompt(dynamic_system_prompt, audio_tensor, semaphore)
+def preprocess_speech2latex(dataset, processor, normalizer):
+    target_sampling_rate = processor.feature_extractor.sampling_rate
+    dataset = dataset.filter(combined_filter, num_proc=10)
+
+    # Note: batched=False is used here since custom audio loading usually operates row-by-row
+    def preprocess(sample):
+        # 2. Extract and resample audio
+        samples = sample["audio_path"].get_all_samples()
+        audio = samples.data.squeeze(dim=0)
+
+        if samples.sample_rate != target_sampling_rate:
+            audio = torchaudio.functional.resample(
+                audio, orig_freq=samples.sample_rate, new_freq=target_sampling_rate
             )
 
-        return await asyncio.gather(*tasks)
+        label = sample["sentence"]
 
-    def _generate(
-        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
-    ) -> List[str]:
-        responses = []
-        for audio_tensor, examples in zip(inputs, batched_examples):
-            examples_str = "\n\n".join(examples)
-            dynamic_system_prompt = (
-                f"{self.system_prompt}\n\n"
-                f"Use the following pairs of text and LaTeX as examples:\n{examples_str}"
-            )
-            
-            audio_bytes = self._tensor_to_wav_bytes(audio_tensor)
-            content = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
+        if normalizer:
+            label = normalizer(label)
 
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[content],
-                config=types.GenerateContentConfig(
-                    system_instruction=dynamic_system_prompt,
-                    temperature=0.2,
-                    max_output_tokens=256,
-                )
-            )
-            
-            responses.append(response.text or "")
+        # 3. Create strings via chat template
+        prompt_messages = create_messages(label=None)
+        full_messages = create_messages(label=label)
 
-        return responses
+        prompt_text = processor.apply_chat_template(
+            prompt_messages, add_generation_prompt=True, tokenize=False
+        )
+        full_text = processor.apply_chat_template(
+            full_messages, add_generation_prompt=False, tokenize=False
+        )
 
-    def generate(
-        self, inputs: List[torch.Tensor], batched_examples: List[List[str]]
-    ) -> List[str]:
+        # 4. Process Inputs (padding=False is mandatory here)
+        # We pass audio.numpy() as Hugging Face processors typically prefer numpy for audio features
+        full_inputs = processor(
+            text=full_text,
+            audios=audio.numpy(),
+            sampling_rate=target_sampling_rate,
+            return_tensors="pt",
+            padding=False,
+        )
 
-        if self.use_async:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
+        # 5. Create labels array and mask out the prompt (using -100)
+        # Tokenize just the prompt to find out how many tokens it takes
+        prompt_inputs = processor(
+            text=prompt_text, audios=audio.numpy(), return_tensors="pt", padding=False
+        )
+        prompt_length = prompt_inputs["input_ids"].shape[-1]
 
-            # Safe execution for Jupyter Notebooks or FastAPI
-            if loop and loop.is_running():
-                nest_asyncio.apply()
-                return loop.run_until_complete(
-                    self._generate_async(inputs, batched_examples)
-                )
-            else:
-                return asyncio.run(self._generate_async(inputs, batched_examples))
+        # Copy input_ids to create the labels
+        labels = full_inputs["input_ids"].clone()
 
-        return self._generate(inputs, batched_examples)
+        # Mask out the prompt tokens so the model only calculates loss on the generated label
+        labels[0, :prompt_length] = -100
+
+        # 6. Unroll dict and remove the fake batch dimension (squeeze 0)
+        processed_sample = {
+            "input_ids": full_inputs["input_ids"].squeeze(0),
+            "attention_mask": full_inputs["attention_mask"].squeeze(0),
+            "labels": labels.squeeze(0),
+            "input": prompt_text,  # Kept string for inference loop to use
+            "label": label,  # Kept string for WER/CER evaluation calculation
+            "prompt_length": prompt_length,
+        }
+
+        # Dynamically add audio specific features (e.g., QwenAudio outputs `audio_values`)
+        # Squeeze them so the data collator can batch them properly later
+        for key in full_inputs.keys():
+            if key not in ["input_ids", "attention_mask"]:
+                processed_sample[key] = full_inputs[key].squeeze(0)
+
+        return processed_sample
+
+    # Map across the entire dataset. remove_columns ensures we don't carry over unbatched old columns.
+    dataset = dataset.map(
+        preprocess, batched=False, remove_columns=dataset.column_names
+    )
+    return dataset

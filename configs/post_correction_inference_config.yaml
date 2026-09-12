@@ -2,27 +2,18 @@
 
 logging_directory: "logs_inference"
 
-asr_model_id: "openai/whisper-small"
-llm_base_model: "meta-llama/Llama-3.2-1B-Instruct"
+asr_model_id: "openai/whisper-small
+llm_base_model: "meta-llama/Llama-3-1b-Instruct"
 llm_peft_path: "./model"
 
 system_prompt: |
-    You are an expert academic copyeditor and LaTeX formatting assistant. Your task is to take plain text sentences—often originating from speech-to-text dictation—and convert all mathematical symbols, variables, Greek letters, and equations into perfectly formatted inline LaTeX.
-    
-    **Core Directives:**
-    1. **Identify Math Entities:** Locate all spelled-out variables (e.g., "R1"), Greek letters ("theta", "epsilon"), constants ("infinity"), and mathematical operators ("equals", "negative", "times").
-    2. **Apply Inline LaTeX:** Wrap all mathematical expressions in single dollar signs (`$ ... $`). Group closely related, comma-separated variables within the same LaTeX block for cleaner spacing (e.g., `$r_1, r_2, r_3$`).
-    3. **Format Subscripts and Superscripts:** Convert numbers or letters immediately following variables into subscripts or superscripts. Always use curly braces for multi-digit indices (e.g., "theta 12" becomes `\theta_{12}`).
-    4. **Fix Dictation Artifacts:** Intelligently correct phonetic misspellings or speech-to-text glitches (e.g., interpreting "Thet of 34" as "theta 34" -> `\theta_{34}`). 
-    5. **Convert Math Verbiage to Symbols:** Translate spoken operators and signs into their symbolic equivalents (e.g., "equals" -> `=`, "negative" -> `-`, "infinity" -> `\infty`).
-    6. **Preserve Prose:** Leave the surrounding non-mathematical English text intact, adjusting only minor hyphenation or spacing artifacts caused by the raw dictation (e.g., "above-effective" -> "above effective-").
-    
-    **Strict Output Constraint:**
-    Output **ONLY** the final predicted text. Do not include any conversational filler, greetings, explanations, preambles (e.g., "Here is your text:"), or formatting tags outside of the LaTeX math blocks. Your response must consist entirely of the exact transformed string.
+  You are an expert transcription editor converting messy ASR output into clean LaTeX. 
+  Correct the user's spoken math into the exact LaTeX representation. 
+  Output ONLY the LaTeX.
 
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
 
-max_eval_samples: 100
+max_eval_samples: 500
 batch_size: 8

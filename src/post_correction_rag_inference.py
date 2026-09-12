@@ -67,10 +67,10 @@ def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     }
 
 
-def run_rag_batch(batch, rag: PostCorrectionRAG):
+def run_rag_batch(batch, rag: PostCorrectionRAG, top_n: int = 3):
     """Stage 2: Raw ASR Predictions -> RAG LaTeX Post-Correction"""
     transcriptions = batch["raw_asr_predictions"]
-    corrected_transcriptions = rag.inference(inputs=transcriptions)
+    corrected_transcriptions = rag.inference(inputs=transcriptions, top_n=top_n)
     return {"predictions": corrected_transcriptions}
 
 
@@ -149,9 +149,10 @@ def main(cfg: DictConfig):
     rag = PostCorrectionRAG(
         system_prompt=system_prompt, generator=generator, collection=collection
     )
+    top_n = cfg.get("top_n", 3)
 
     logger.info("Executing Stage 2: RAG Post-Correction...")
-    rag_fn = functools.partial(run_rag_batch, rag=rag)
+    rag_fn = functools.partial(run_rag_batch, rag=rag, top_n=top_n)
 
     dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
 
@@ -166,7 +167,7 @@ def main(cfg: DictConfig):
     logger.info("------- Final Evaluation Results -------")
     for metric_name, value in results.items():
         logger.info(f"{metric_name}: {value}")
-        
+
     # Saving metrics
     results_directory = cfg.get("results_directory", "results")
     os.makedirs(results_directory, exist_ok=True)

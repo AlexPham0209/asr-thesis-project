@@ -49,13 +49,13 @@ class MultiModalRAG:
         return batch_examples
 
     def inference(
-        self, inputs: Union[str, torch.Tensor, List[Any]]
+        self, inputs: Union[str, torch.Tensor, List[Any]], top_n: int = 3
     ) -> Union[str, List[str]]:
         # FIXED: Correctly detect single inputs whether str or torch.Tensor
         is_single = not isinstance(inputs, list)
         queries = [inputs] if is_single else inputs
 
-        batched_examples = self.retrieve(queries)
+        batched_examples = self.retrieve(queries, top_n)
         res = self.generator.generate(inputs=queries, batched_examples=batched_examples)
 
         return res[0] if is_single else res

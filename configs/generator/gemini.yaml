@@ -3,3 +3,4 @@
 _target_: models.post_correction_rag.GeminiGenerator
 system_prompt: ${system_prompt}
 model_name: "gemini-2.5-flash"
+api_key: ${oc.env:GEMINI_API_KEY}

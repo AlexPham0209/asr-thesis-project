@@ -58,11 +58,13 @@ class PostCorrectionRAG:
 
         return batch_examples
 
-    def inference(self, inputs: Union[list[str], str]) -> Union[list[str], str]:
+    def inference(
+        self, inputs: Union[list[str], str], top_n: int = 3
+    ) -> Union[list[str], str]:
         is_single = isinstance(inputs, str)
         queries = [inputs] if is_single else inputs
 
-        batched_examples = self.retrieve(queries)
+        batched_examples = self.retrieve(queries, top_n)
         res = self.generator.generate(inputs=queries, batched_examples=batched_examples)
 
         return res[0] if is_single else res

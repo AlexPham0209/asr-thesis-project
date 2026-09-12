@@ -22,6 +22,7 @@ logger = logging.getLogger("inference")
 class GeminiGenerator(BaseGenerator):
     def __init__(
         self,
+        api_key: str,
         system_prompt: str,
         model_name: str = "gemini-2.5-flash",
         max_concurrent: int = 10,
@@ -30,7 +31,7 @@ class GeminiGenerator(BaseGenerator):
         self.system_prompt = system_prompt
         self.max_concurrent = max_concurrent
         self.use_async = use_async
-        self.client = genai.Client()
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
 
     async def generate_prompt(

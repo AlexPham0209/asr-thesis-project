@@ -1,71 +1,64 @@
-import functools
 import chromadb
 import datasets
-import torch
-import torch.nn.functional as F
-from transformers import WhisperProcessor
-
-from data.filters import combined_filter
-from models.clap_model import WhisperEmbedding
+import torchaudio
+from filters import combined_filter
+from embeddings.embedding import WhisperEmbedding
 
 
 def main():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    # 1. Initialize wrapper class (handles model loading & device selection automatically)
+    embedder = WhisperEmbedding(model_name="openai/whisper-small", sampling_rate=16000)
 
-    # 1. Use proper CLAP model and processor
-    processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
-    embedding = WhisperEmbedding(
-        model_name="openai/whisper-large-v3"
-    )
-    model.eval()  # Disable dropout/batchnorm updates
-
-    # 2. Load and filter dataset
+    # 2. Load dataset and match sampling rate with the embedder
     dataset = datasets.load_dataset(
         "marsianin500/Speech2Latex", name="default", split="sentences_train"
+    )
+    dataset = dataset.cast_column(
+        "audio", datasets.Audio(sampling_rate=embedder.sampling_rate)
     )
 
     print("Filtering dataset...")
     dataset = dataset.filter(combined_filter, num_proc=10)
 
-    # 3. Configure ChromaDB with Cosine Distance
+    # 3. Configure ChromaDB
     client = chromadb.PersistentClient(path="./vector_db")
     collection = client.get_or_create_collection(
-        name="speech2latex-CLAP",
-        metadata={"hnsw:space": "cosine"}  # Set metric to cosine similarity
+        name="speech2latex-Whisper", metadata={"hnsw:space": "cosine"}
     )
 
     total_docs = len(dataset)
-    GPU_BATCH_SIZE = 256  # Efficient batch size for GPU inference & Chroma upserts
+    GPU_BATCH_SIZE = 16
     print(f"Generating embeddings and upserting {total_docs} documents...")
 
-    # 4. Direct streaming inference and upserting (No map caching overhead)
-    for i in range(0, total_docs, GPU_BATCH_SIZE):
-        batch = dataset[i : i + GPU_BATCH_SIZE]
+    # 4. Stream and upsert
+    for start in range(0, total_docs, GPU_BATCH_SIZE):
+        end = min(total_docs, start + GPU_BATCH_SIZE)
+        batch = dataset[start:end]
 
         source_sentences = batch["whisper_text"]
         target_sentences = batch["sentence"]
 
-        # Tokenize using ClapProcessor
-        inputs = processor(
-            text=source_sentences,
-            padding=True,
-            truncation=True,
-            max_length=250,
-            return_tensors="pt",
-        ).to(device)
+        # Extract audio waveform arrays
+        audios = []
+        for audio in batch["audio_path"]:
+            samples = audio.get_all_samples()
+            audio_tensor = samples.data.squeeze(dim=0)
 
-        with torch.no_grad():
-            text_features = model.get_text_features(**inputs)
-            # Normalize embeddings for Cosine distance
-            text_features = F.normalize(text_features, p=2, dim=-1)
-            embeddings = text_features.cpu().tolist()
+            if samples.sample_rate != embedder.sampling_rate:
+                audio_tensor = torchaudio.functional.resample(
+                    audio_tensor,
+                    orig_freq=samples.sample_rate,
+                    new_freq=embedder.sampling_rate,
+                )
+            audios.append(audio_tensor.numpy())
+
+        # 5. Generate embeddings via __call__
+        embeddings = embedder(audios)
 
         # Prepare payload
-        batch_ids = [f"id_{j}" for j in range(i, i + len(source_sentences))]
+        batch_ids = [f"id_{j}" for j in range(start, end)]
         batch_meta = [{"target": t} for t in target_sentences]
 
-        # Upsert directly to Chroma
         collection.upsert(
             documents=source_sentences,
             embeddings=embeddings,
@@ -73,9 +66,8 @@ def main():
             ids=batch_ids,
         )
 
-        if (i // GPU_BATCH_SIZE) % 10 == 0 or (i + GPU_BATCH_SIZE) >= total_docs:
-            processed = min(i + GPU_BATCH_SIZE, total_docs)
-            print(f"Processed & Upserted {processed} / {total_docs} items...")
+        if (start // GPU_BATCH_SIZE) % 10 == 0 or end >= total_docs:
+            print(f"Processed & Upserted {end} / {total_docs} items...")
 
     print("Vector database created successfully.")
 
