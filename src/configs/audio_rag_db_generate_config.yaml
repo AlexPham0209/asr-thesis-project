@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - embedding: whisper
+  - _self_
+
+# Dataset
+dataset_name: "marsianin500/Speech2Latex"
+split: "sentences_train"
+num_proc: 10
+
+# ChromaDB vector store. The collection name encodes the embedder so it can't be
+# confused with the MathBERT text index (same 768-d vectors, different space).
+db_path: "./vector_db"
+collection_name: "speech2latex-whisper-audio"
+
+# Rate for both the Whisper embedder and the stored clips
+# (<db_path>/audio/<collection_name>/id_N.wav).
+audio_sampling_rate: 16000
+
+batch_size: 32

@@ -248,7 +248,18 @@ def main(cfg: DictConfig):
             for k, v in best_run.hyperparameters.items():
                 OmegaConf.update(cfg.training, k, v, merge=True)
 
-                # Safest DDP approach: Re-instantiate the trainer for the final run
+            # Safest DDP approach: Re-instantiate the trainer for the final run
+            training_args = SFTConfig(
+                **cfg.training,
+                max_length=512,
+                dataset_text_field="messages",
+                assistant_only_loss=True,
+                loss_type="nll",
+                bf16=torch.cuda.is_bf16_supported(),
+                fp16=not torch.cuda.is_bf16_supported(),
+                output_dir=model_directory,
+            )    
+            
             trainer = SFTTrainer(
                 model_init=model_init,
                 args=training_args,
@@ -276,7 +287,7 @@ def main(cfg: DictConfig):
     # Evaluate using the validation dataset
     with torch.autocast(
         device_type=device,
-        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat166,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16,
     ):
         valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)

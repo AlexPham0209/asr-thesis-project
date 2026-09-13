@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - embedding: mathbert
+  - _self_
+
+# Dataset
+dataset_name: "marsianin500/Speech2Latex"
+split: "sentences_train"
+num_proc: 10
+
+# ChromaDB vector store. The collection name encodes the embedder so it can't be
+# confused with the Whisper audio index (same 768-d vectors, different space).
+db_path: "./vector_db"
+collection_name: "speech2latex-mathbert-text"
+
+# Also store each clip as <db_path>/audio/<collection_name>/id_N.wav and record
+# audio_path in the metadata, so the cascade multimodal pipeline can send the
+# retrieved examples to Gemini as audio. Costs disk; set false for text-only RAG.
+store_audio: true
+audio_sampling_rate: 16000
+
+batch_size: 32

@@ -1,0 +1,3 @@
+# Composed under `embedding:` (no @package _global_).
+_target_: asr_thesis_project.embeddings.embedding.MathBERTEmbedding
+model_name: "tbs17/MathBERT"

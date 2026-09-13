@@ -1,8 +1,13 @@
 # Composed under `generator:` (no @package _global_).
-_target_: asr_thesis_project.generator.text_generator.GeminiGenerator
+_target_: asr_thesis_project.generator.audio_generator.GeminiMultimodalGenerator
 api_key: ${oc.env:GEMINI_API_KEY}
 system_prompt: ${system_prompt}
 model_name: "gemini-3.8-flash"   # TODO: confirm this model id exists for your API key
+
+# Decode rate of the query clips; declared once at the root as audio_sampling_rate.
+sample_rate: ${audio_sampling_rate}
+# Retrieved examples carry audio_path relative to the vector-db directory.
+audio_root: ${db_path}
 
 temperature: 0.2
 max_output_tokens: 512
@@ -10,3 +15,4 @@ thinking_budget: 0       # thinking shares the output budget; 0 = off. null = mo
 max_concurrent: 4
 use_async: true
 retry_attempts: 5
+include_text_fallback: true   # if an example has no stored clip, send its ASR text instead

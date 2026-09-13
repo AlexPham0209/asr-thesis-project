@@ -17,3 +17,6 @@ results_directory: results
 normalize_during_preprocessing: false
 use_lora: true
 use_hyperparameter_search: false
+
+# Results & Output Settings
+results_directory: "results"

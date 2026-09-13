@@ -1,0 +1,5 @@
+# Composed under `embedding:` (no @package _global_) so scripts can call
+# hydra.utils.instantiate(cfg.embedding). The rate comes from the root audio_sampling_rate.
+_target_: asr_thesis_project.embeddings.embedding.WhisperEmbedding
+model_name: "openai/whisper-small"
+sampling_rate: ${audio_sampling_rate}

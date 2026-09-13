@@ -16,5 +16,5 @@ dataset:
     split: "sentences_test"
 
 preprocess:
-  _target_: data.preprocess_asr.preprocess_speech2latex
+  _target_: asr_thesis_project.data.preprocess_asr.preprocess_speech2latex
   _partial_: true

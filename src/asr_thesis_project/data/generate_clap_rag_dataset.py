@@ -54,7 +54,7 @@ def main():
         ).to(device)
 
         with torch.no_grad():
-            text_features = model(inputs)
+            text_features = model(**inputs)
 
             # Normalize embeddings for Cosine distance
             text_features = F.normalize(text_features, p=2, dim=-1)

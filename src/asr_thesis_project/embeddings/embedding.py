@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
-from transformers import AutoFeatureExtractor, AutoModel, WhisperFeatureExtractor
+from transformers import AutoFeatureExtractor, AutoModel, BertTokenizer, WhisperFeatureExtractor
 
-from asr_thesis_project.models.clap_model import WhisperEmbeddingModule
+from asr_thesis_project.models.embeddings import MathBERTEmbeddingModule, WhisperEmbeddingModule
 
 
 class BaseEmbedding(ABC):
@@ -57,10 +57,12 @@ class WhisperEmbedding(BaseEmbedding):
 
     def embedding(self, input) -> list:
         # Fixed: Use self.sampling_rate and push features to device
+        # Whisper's encoder requires exactly 3000 mel frames (30 s); the
+        # extractor's default padding="max_length" does that. padding=True
+        # (pad-to-longest) makes the encoder raise on any batch shorter than 30 s.
         inputs = self.feature_extractor(
             input,
             sampling_rate=self.sampling_rate,
-            padding=True,
             return_attention_mask=True,
             return_tensors="pt",
         ).to(self.device)
@@ -76,3 +78,33 @@ class WhisperEmbedding(BaseEmbedding):
             embeddings = audio_features.cpu().tolist()
 
         return embeddings
+
+
+class MathBERTEmbedding(BaseEmbedding):
+    def __init__(
+        self,
+        model_name: str = "tbs17/MathBERT",
+        device: str = None,
+    ):
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = MathBERTEmbeddingModule(model_name=model_name).to(self.device)
+        self.tokenizer = BertTokenizer.from_pretrained(model_name, output_hidden_states=True)
+        self.model.eval()
+
+    def embedding(self, input) -> list:
+        if isinstance(input, str):
+            input = [input]
+        input = [text.lower() for text in input]
+        inputs = self.tokenizer(
+            input,
+            padding=True,  # batch of different-length sentences -> must pad to tensorize
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.inference_mode():
+            features = self.model(**inputs)
+            features = F.normalize(features, p=2, dim=-1)
+
+        return features.cpu().tolist()

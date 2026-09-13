@@ -1,177 +1,157 @@
+import functools
 import json
-import os
-import sys
 import logging
+import os
 import warnings
 from datetime import datetime
-import functools
-import gc
 
 import chromadb
-import torch
-import torchaudio
+from dotenv import load_dotenv
 import datasets
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
+import torch
 
-from transformers import (
-    AutoModelForSpeechSeq2Seq,
-    AutoProcessor,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-)
-from peft import PeftModel
-
-from asr_thesis_project.models.post_correction_rag import PostCorrectionRAG
 from asr_thesis_project.data.filters import combined_filter
-from asr_thesis_project.utils.logger import initialize_loggers
+from asr_thesis_project.models.post_correction_rag import PostCorrectionRAG
+from asr_thesis_project.utils.asr import load_whisper, release_cuda, run_asr_batch
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.utils.logger import initialize_loggers
+
+load_dotenv()  # GEMINI_API_KEY / HF_TOKEN for ${oc.env:...} in the configs
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-HF_TOKEN = os.path.join("HF_TOKEN")
 
 
-def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
-    """Stage 1: Audio -> Raw ASR Predictions"""
-    audios = []
+def run_rag_batch(batch, rag: PostCorrectionRAG, top_n: int):
+    """Stage 2: raw ASR predictions -> RAG LaTeX post-correction"""
+    predictions = rag.inference(inputs=batch["raw_asr_predictions"], top_n=top_n)
+    return {"predictions": predictions}
 
-    for audio in batch["audio_path"]:
-        samples = audio.get_all_samples()
-        audio_tensor = samples.data.squeeze(dim=0)
 
-        if samples.sample_rate != target_sampling_rate:
-            audio_tensor = torchaudio.functional.resample(
-                audio_tensor,
-                orig_freq=samples.sample_rate,
-                new_freq=target_sampling_rate,
-            )
-        audios.append(audio_tensor.numpy())
-
-    # Dynamically match target model device
-    inputs = asr_processor(
-        audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
-    ).to(asr_model.device)
-
-    with torch.no_grad():
-        generated_ids = asr_model.generate(
-            inputs["input_features"], language="english", task="transcribe"
+def check_collection_matches_embedder(collection, cfg):
+    """Refuse to query an index built by a different embedder."""
+    if collection.count() == 0:
+        raise RuntimeError(
+            f"Collection '{collection.name}' at {cfg.db_path} is empty. Build it first with "
+            "`python -m asr_thesis_project.data.generate_text_rag_dataset`."
+        )
+    built_with = (collection.metadata or {}).get("embedder")
+    expected = cfg.embedding._target_
+    if built_with and built_with != expected:
+        raise RuntimeError(
+            f"Collection '{collection.name}' was built with {built_with}, "
+            f"but the query embedder is {expected}."
         )
 
-    transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
 
-    return {
-        "raw_asr_predictions": transcriptions,
-        "references": batch["sentence"],
-    }
-
-
-def run_rag_batch(batch, rag: PostCorrectionRAG, top_n: int = 3):
-    """Stage 2: Raw ASR Predictions -> RAG LaTeX Post-Correction"""
-    transcriptions = batch["raw_asr_predictions"]
-    corrected_transcriptions = rag.inference(inputs=transcriptions, top_n=top_n)
-    return {"predictions": corrected_transcriptions}
-
-
-@hydra.main(version_base=None, config_path="../configs", config_name="inference_config")
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="post_correction_rag_config"
+)
 def main(cfg: DictConfig):
-    # Setup loggers
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
 
     logger.info(f"Using primary device: {device}")
-    logger.info("------- Initializing RAG Inference Pipeline -------")
+    logger.info("------- Initializing Post-Correction RAG Inference Pipeline -------")
 
-    # 1. Load & Filter Dataset First
+    # 1. Dataset
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
     dataset_split = cfg.get("dataset_split", "sentences_test")
     logger.info(f"Loading dataset: {dataset_name} ({dataset_split})")
-
     dataset = datasets.load_dataset(dataset_name, name="default", split=dataset_split)
 
     logger.info("Filtering dataset...")
     dataset = dataset.filter(combined_filter, num_proc=cfg.get("num_proc", 10))
 
-    max_samples = cfg.get("max_eval_samples", len(dataset))
+    max_samples = cfg.get("max_eval_samples")
     if max_samples:
         logger.info(f"Subsampling to {max_samples} samples.")
         dataset = dataset.select(range(min(max_samples, len(dataset))))
 
     batch_size = cfg.get("batch_size", 8)
+    results_directory = cfg.get("results_directory", "results")
+    os.makedirs(results_directory, exist_ok=True)
 
-    # 2. Stage 1: ASR Setup & Execution
-    asr_model_id = cfg.get("asr_model_id", "openai/whisper-small")
-    logger.info(f"Loading ASR model: {asr_model_id}")
-
-    asr_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        asr_model_id, device_map="auto"
+    # 2. Stage 1: ASR
+    asr_model, asr_processor, target_sampling_rate = load_whisper(
+        cfg.get("asr_model_id", "openai/whisper-small")
     )
-    asr_processor = AutoProcessor.from_pretrained(asr_model_id)
-    target_sampling_rate = asr_processor.feature_extractor.sampling_rate
 
-    logger.info("Executing Stage 1: ASR Inference...")
+    logger.info("Executing Stage 1: ASR inference...")
     asr_fn = functools.partial(
         run_asr_batch,
         asr_model=asr_model,
         asr_processor=asr_processor,
         target_sampling_rate=target_sampling_rate,
     )
-
-    # Drop non-standard audio objects to avoid Arrow serialization errors
     dataset = dataset.map(
         asr_fn,
         batched=True,
         batch_size=batch_size,
-        remove_columns=dataset.column_names,
+        remove_columns=dataset.column_names,  # drop the torchcodec audio objects
     )
 
-    # Free ASR memory before initializing LLM & Vector DB
-    del asr_model
-    del asr_processor
-    gc.collect()
-    torch.cuda.empty_cache()
+    # Keep the raw ASR output: it's the baseline every RAG number is compared against.
+    with open(os.path.join(results_directory, f"asr_{timestamp}.jsonl"), "w") as f:
+        for raw, ref in zip(dataset["raw_asr_predictions"], dataset["references"]):
+            f.write(json.dumps({"raw_asr": raw, "reference": ref}) + "\n")
 
-    # Getting ChromaDB vector database
-    db_path = cfg.get("db_path", "./vector_db")
-    collection_name = cfg.get("collection_name", "speech2latex")
-    client = chromadb.PersistentClient(path=db_path)
-    collection = client.get_or_create_collection(name=collection_name)
+    del asr_model, asr_processor
+    release_cuda()
 
-    # Creating generator
+    # 3. Stage 2: vector store + embedder + generator
+    client = chromadb.PersistentClient(path=cfg.db_path)
+    collection = client.get_collection(name=cfg.collection_name)  # no silent create
+    check_collection_matches_embedder(collection, cfg)
+
+    embedding = hydra.utils.instantiate(cfg.embedding)
     generator = hydra.utils.instantiate(cfg.generator)
-    system_prompt = cfg.get(
-        "system_prompt",
-        "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
-    )
 
-    logger.info("Initializing RAG module...")
     rag = PostCorrectionRAG(
-        system_prompt=system_prompt, generator=generator, collection=collection
+        system_prompt=cfg.system_prompt,
+        collection=collection,
+        generator=generator,
+        embedding=embedding,
     )
+
     top_n = cfg.get("top_n", 3)
-
-    logger.info("Executing Stage 2: RAG Post-Correction...")
-    rag_fn = functools.partial(run_rag_batch, rag=rag, top_n=top_n)
-
-    dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
-
-    # 4. Compute Metrics
-    logger.info("Computing Metrics...")
-    metrics = LatexInContextMetrics()
-
-    results = metrics.compute_all(
-        predictions=dataset["predictions"], references=dataset["references"]
+    logger.info(f"Executing Stage 2: RAG post-correction (top_n={top_n})...")
+    dataset = dataset.map(
+        functools.partial(run_rag_batch, rag=rag, top_n=top_n),
+        batched=True,
+        batch_size=batch_size,
     )
+
+    # Persist predictions before metrics so a metrics crash can't lose the API calls.
+    with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
+        for raw, pred, ref in zip(
+            dataset["raw_asr_predictions"], dataset["predictions"], dataset["references"]
+        ):
+            f.write(json.dumps({"raw_asr": raw, "prediction": pred, "reference": ref}) + "\n")
+
+    # 4. Metrics — RAG output *and* the raw ASR baseline, side by side.
+    logger.info("Computing metrics...")
+    metrics = LatexInContextMetrics()
+    results = {
+        "top_n": top_n,
+        "n_samples": len(dataset),
+        "rag": metrics.compute_all(
+            predictions=dataset["predictions"], references=dataset["references"]
+        ),
+        "raw_asr": metrics.compute_all(
+            predictions=dataset["raw_asr_predictions"], references=dataset["references"]
+        ),
+    }
 
     logger.info("------- Final Evaluation Results -------")
-    for metric_name, value in results.items():
-        logger.info(f"{metric_name}: {value}")
+    for stage in ("raw_asr", "rag"):
+        for metric_name, value in results[stage].items():
+            logger.info(f"{stage}/{metric_name}: {value}")
 
-    # Saving metrics
-    results_directory = cfg.get("results_directory", "results")
-    os.makedirs(results_directory, exist_ok=True)
-    with open(os.path.join(results_directory, "results.json"), "w") as f:
+    with open(os.path.join(results_directory, f"results_{timestamp}.json"), "w") as f:
         json.dump(results, f, indent=4)
 
 

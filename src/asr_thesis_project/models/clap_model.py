@@ -1,84 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoModel, WhisperModel
-
-
-def mean_pooling(embeddings, attention_mask=None):
-    """
-    Args:
-        input_features: Encoded representation tensor (batch_size, seq_len, hidden_dim)
-        attention_mask: Optional mask tensor (batch_size, seq_len)
-
-    Returns:
-        Embedding tensor that has been mean-pooled across the seq_len dimension (batch_size, hidden_dim)
-    """
-    if attention_mask is None:
-        return torch.mean(embeddings, dim=1)
-
-    mask_expanded = attention_mask.unsqueeze(-1).float()
-    sum_embeddings = torch.sum(embeddings * mask_expanded, dim=1)
-    sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-
-    return sum_embeddings / sum_mask
-
-
-class WhisperEmbeddingModule(nn.Module):
-    def __init__(self, model_name: str):
-        super().__init__()
-
-        # Load base Whisper encoder
-        self.encoder = WhisperModel.from_pretrained(model_name).get_encoder()
-        self.hidden_dim = self.encoder.config.d_model
-
-    def forward(
-        self, input_features: torch.Tensor, attention_mask: torch.Tensor = None
-    ) -> torch.Tensor:
-        """
-        Args:
-            input_features: Log-Mel spectrogram tensor (batch_size, n_mels, time_steps)
-            attention_mask: Optional mask tensor (batch_size, time_steps)
-        """
-
-        # Retrieving encoded representation of our audio from the Whisper encoder: (batch_size, seq_len, hidden_dim)
-        encoder_outputs = self.encoder(input_features=input_features)
-        embeddings = encoder_outputs.last_hidden_state
-
-        # Mean pooling across the sequence dimension: (batch_size, hidden_dim)
-        if (
-            attention_mask is not None
-            and attention_mask.shape[1] != embeddings.shape[1]
-        ):
-            attention_mask = attention_mask[:, ::2]
-
-        pooled = mean_pooling(embeddings, attention_mask)
-
-        # Linearly projecting to joint audio-text embedding dimension then applying Euclidean (L2) normalization: (batch_size, embed_dim)
-        return pooled
-
-
-class MathBERTEmbeddingModule(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model = AutoModel.from_pretrained(
-            "math-similarity/Bert-MLM_arXiv-MP-class_zbMath"
-        )
-
-        self.hidden_dim = getattr(
-            self.model.config,
-            "hidden_size",
-            getattr(self.model.config, "d_model", None),
-        )
-
-    def forward(
-        self, input_features: dict, attention_mask: torch.Tensor = None
-    ) -> torch.Tensor:
-        encoder_outputs = self.model(**input_features)
-        embeddings = encoder_outputs.last_hidden_state
-
-        # Apply mean pooling
-        pooled = mean_pooling(embeddings, attention_mask)
-        return pooled
+from transformers import AutoModel, BertModel, WhisperModel
 
 
 class CustomCLAPModule(nn.Module):
@@ -99,7 +22,7 @@ class CustomCLAPModule(nn.Module):
             self.audio_embedding_layer.hidden_dim, embed_dim
         )
         self.text_projection = nn.Linear(
-            self.audio_embedding_layer.hidden_dim, embed_dim
+            self.text_embedding_layer.hidden_dim, embed_dim
         )
 
         # Learnable logit scale initialized to CLIP default (log(1/0.07))
@@ -110,22 +33,14 @@ class CustomCLAPModule(nn.Module):
 
     def forward(
         self,
-        input_features: torch.Tensor,
+        audio_inputs: torch.Tensor,
         text_inputs: torch.Tensor,
         audio_mask: torch.Tensor = None,
         text_mask: torch.Tensor = None,
     ):
-        # Compute L2-normalized audio embeddings
-        audio_embeds = self.audio_embedding_layer(
-            input_features, attention_mask=audio_mask
-        )
-        audio_embeds = self.audio_projection(audio_embeds)
-        audio_embeds = F.normalize(audio_embeds, p=2, dim=-1)
-
-        # Compute L2-normalized text embeddings
-        text_embeds = self.text_embedding_layer(text_inputs, attention_mask=text_mask)
-        text_embeds = self.text_projection(text_embeds)
-        text_embeds = F.normalize(text_embeds, p=2, dim=-1)
+        # Compute L2-normalized audio and text embeddings
+        audio_embeds = self.get_audio_features(input_features=audio_inputs, audio_mask=audio_mask)
+        text_embeds = self.get_text_features(input_features=text_inputs, text_mask=text_mask)
 
         # Compute similarity matrix between audio and text embeddings
         logit_scale = self.logit_scale.exp().clamp(max=100.0)
@@ -145,7 +60,14 @@ class CustomCLAPModule(nn.Module):
         return logits, loss
 
     def get_audio_features(self, input_features, attention_mask=None):
-        return self.audio_embedding_layer(input_features, attention_mask=attention_mask)
+        audio_embeds = self.audio_embedding_layer(input_features, attention_mask=attention_mask)
+        audio_embeds = self.audio_projection(audio_embeds)
+        audio_embeds = F.normalize(audio_embeds, p=2, dim=-1)
+        return audio_embeds
 
     def get_text_features(self, input_features, attention_mask=None):
-        return self.text_embedding_layer(input_features, attention_mask=attention_mask)
+        text_embeds = self.text_embedding_layer(input_features, attention_mask=attention_mask)
+        text_embeds = self.text_projection(text_embeds)
+        text_embeds = F.normalize(text_embeds, p=2, dim=-1)
+        
+        return text_embeds

@@ -50,7 +50,6 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
     target_sampling_rate = processor.feature_extractor.sampling_rate
 
     # 1. Cast audio column for auto-decoding
-    dataset = dataset.cast_column("audio", Audio(sampling_rate=target_sampling_rate))
     dataset = dataset.filter(combined_filter, num_proc=10)
 
     # 3. Corrected and vectorized batched mapping
@@ -81,7 +80,7 @@ def preprocess_speech2latex(dataset, processor, architecture, normalizer=None):
         batch[input_key] = batch[input_key].squeeze(dim=0)
         batch["labels"] = batch["labels"].squeeze(dim=0)
 
-        batch["input_length"] = audio.size(dim=-1) / samples.sample_rate
+        batch["input_length"] = audio.size(dim=-1) / target_sampling_rate
 
         return batch
 
