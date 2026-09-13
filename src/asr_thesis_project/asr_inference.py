@@ -7,13 +7,11 @@ from datetime import datetime
 import functools
 import gc
 
-import chromadb
-from dotenv import load_dotenv
 import torch
 import torchaudio
 import datasets
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from transformers import (
     AutoModelForSpeechSeq2Seq,
@@ -23,23 +21,18 @@ from transformers import (
 )
 from peft import PeftModel
 
-from models.post_correction_rag import PostCorrectionRAG
-from data.filters import combined_filter
-from models.multimodal_rag import MultiModalRAG
-from utils.logger import initialize_loggers
-from utils.latex_metrics import LatexInContextMetrics
-
-load_dotenv()
+from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.logger import initialize_loggers
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 
-def run_rag_batch(batch, rag: MultiModalRAG, target_sampling_rate, top_n):
+def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
+    """Stage 1: Audio -> Raw ASR Predictions"""
     audios = []
-
     for audio in batch["audio_path"]:
         samples = audio.get_all_samples()
         audio_tensor = samples.data.squeeze(dim=0)
@@ -50,26 +43,34 @@ def run_rag_batch(batch, rag: MultiModalRAG, target_sampling_rate, top_n):
                 orig_freq=samples.sample_rate,
                 new_freq=target_sampling_rate,
             )
-            audios.append(audio_tensor)
+        audios.append(audio_tensor.numpy())
 
-    corrected_transcriptions = rag.inference(inputs=audios)
-    return {"predictions": corrected_transcriptions}
+    inputs = asr_processor(
+        audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
+    ).to(asr_model.device)
+
+    with torch.no_grad():
+        generated_ids = asr_model.generate(
+            inputs["input_features"], language="english", task="transcribe"
+        )
+
+    transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
+    return {"predictions": transcriptions, "references": batch["sentence"]}
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="inference_config")
+@hydra.main(
+    version_base=None, config_path="../configs", config_name="asr_inference_config"
+)
 def main(cfg: DictConfig):
-    # Setup loggers
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
 
     logger.info(f"Using primary device: {device}")
-    logger.info("------- Initializing RAG Inference Pipeline -------")
+    logger.info("------- Initializing Inference Pipeline -------")
 
-    # 1. Load & Filter Dataset First
+    # 1. Load Dataset & Filter
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
     dataset_split = cfg.get("dataset_split", "sentences_test")
-    logger.info(f"Loading dataset: {dataset_name} ({dataset_split})")
-
     dataset = datasets.load_dataset(dataset_name, name="default", split=dataset_split)
 
     logger.info("Filtering dataset...")
@@ -82,43 +83,31 @@ def main(cfg: DictConfig):
 
     batch_size = cfg.get("batch_size", 8)
 
-    # Getting ChromaDB vector database
-    db_path = cfg.get("db_path", "./vector_db")
-    collection_name = cfg.get("collection_name", "speech2latex")
-    client = chromadb.PersistentClient(path=db_path)
-    collection = client.get_or_create_collection(
-        name=collection_name, metadata={"hnsw:space": "cosine"}
+    # 2. Stage 1: ASR Processing
+    asr_model_id = cfg.get("asr_model_id", "openai/whisper-small")
+    logger.info(f"Loading ASR model: {asr_model_id}")
+
+    asr_model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        asr_model_id, device_map="auto"
+    )
+    asr_processor = AutoProcessor.from_pretrained(asr_model_id)
+    target_sampling_rate = asr_processor.feature_extractor.sampling_rate
+
+    asr_fn = functools.partial(
+        run_asr_batch,
+        asr_model=asr_model,
+        asr_processor=asr_processor,
+        target_sampling_rate=target_sampling_rate,
     )
 
-    # Creating generator
-    generator = hydra.utils.instantiate(cfg.generator)
-    embedding = hydra.utils.instantiate(cfg.embedding)
-    system_prompt = cfg.get(
-        "system_prompt",
-        "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
+    # Drop original dataset columns during map to avoid Arrow serialization issues
+    dataset = dataset.map(
+        asr_fn, batched=True, batch_size=batch_size, remove_columns=dataset.column_names
     )
-
-    logger.info("Initializing RAG module...")
-    rag = MultiModalRAG(
-        system_prompt=system_prompt,
-        generator=generator,
-        embedding=embedding,
-        collection=collection,
-    )
-    top_n = cfg.get("top_n", 3)
-
-    rag_fn = functools.partial(
-        run_rag_batch,
-        rag=rag,
-        target_sampling_rate=getattr(embedding, "sampling_rate", 16000),
-        top_n=top_n,
-    )
-    dataset = dataset.map(rag_fn, batched=True, batch_size=batch_size)
 
     # 4. Compute Metrics
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()
-
     results = metrics.compute_all(
         predictions=dataset["predictions"], references=dataset["references"]
     )

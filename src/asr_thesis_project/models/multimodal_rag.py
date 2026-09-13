@@ -2,8 +2,8 @@ from typing import Any, List, Union
 import chromadb
 import torch
 
-from embeddings.embedding import BaseEmbedding
-from generator.generator import BaseGenerator
+from asr_thesis_project.embeddings.embedding import BaseEmbedding
+from asr_thesis_project.generator.generator import BaseGenerator
 
 
 class MultiModalRAG:

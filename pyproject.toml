@@ -47,6 +47,13 @@ dependencies = [
     "yt-dlp[default]>=2026.7.4",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cu126" }
 torchvision = { index = "pytorch-cu126" }
@@ -62,5 +69,3 @@ explicit = true
 dev = [
     "ipykernel>=7.3.0",
 ]
-
-

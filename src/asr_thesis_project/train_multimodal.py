@@ -31,23 +31,23 @@ from peft import get_peft_model, LoraConfig
 # Note: trl and SFTTrainer are removed as they are specialized for Text-only RLHF/SFT
 # We use standard Seq2SeqTrainer which natively supports predict_with_generate for Audio-to-Text
 
-from utils.hyperparameter import (
+from asr_thesis_project.utils.hyperparameter import (
     compute_objective,
     create_hyperparameter_diagrams,
     hp_space,
 )
-from utils.latex_metrics import LatexInContextMetrics
-from data.normalizer import create_latex_normalizer
-from utils.logger import CustomLoggingCallback, initialize_loggers
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.data.normalizer import create_latex_normalizer
+from asr_thesis_project.utils.logger import CustomLoggingCallback, initialize_loggers
 
 # We swap out create_llm_metric for a generic create_metric (usually Word Error Rate / CER for speech)
-from utils.metrics import (
+from asr_thesis_project.utils.metrics import (
     create_metric,
     preprocess_logits_for_metrics,
 )
 
 # Crucial for padding variable-length audio features and text labels differently
-from data.data_collator import (
+from asr_thesis_project.data.data_collator import (
     DataCollatorSpeechCausalLMWithPadding,
     DataCollatorSpeechSeq2SeqWithPadding,
 )

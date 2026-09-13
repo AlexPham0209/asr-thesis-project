@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 from transformers import AutoProcessor
 from datasets import Dataset, IterableDataset
-from src.data.preprocess import preprocess
+from data.preprocess import preprocess
 
 
 @pytest.fixture(scope="module")

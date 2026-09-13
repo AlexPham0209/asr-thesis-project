@@ -22,10 +22,10 @@ from transformers import (
 )
 from peft import PeftModel
 
-from models.post_correction_rag import PostCorrectionRAG
-from data.filters import combined_filter
-from utils.logger import initialize_loggers
-from utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.models.post_correction_rag import PostCorrectionRAG
+from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.logger import initialize_loggers
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")

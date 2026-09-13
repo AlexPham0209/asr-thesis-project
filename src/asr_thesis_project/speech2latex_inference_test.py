@@ -5,8 +5,8 @@ from datasets import load_dataset
 import transformers
 import datasets
 
-from data.filters import combined_filter
-from utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")

@@ -1,6 +1,6 @@
 import pytest
 
-from src.data.normalizer import (
+from asr_thesis_project.data.normalizer import (
     create_latex_normalizer,
     normalize_wav2vec2,
     normalize_whisper,

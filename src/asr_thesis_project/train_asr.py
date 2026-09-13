@@ -12,12 +12,12 @@ import sys
 import time
 
 import optuna
-from utils.hyperparameter import (
+from asr_thesis_project.utils.hyperparameter import (
     compute_objective,
     create_hyperparameter_diagrams,
     hp_space,
 )
-from utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 import evaluate
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -35,11 +35,11 @@ from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForC
 import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
-from data.normalizer import create_latex_normalizer
-from utils.logger import CustomLoggingCallback, initialize_loggers
-from utils.metrics import create_metric
+from asr_thesis_project.data.normalizer import create_latex_normalizer
+from asr_thesis_project.utils.logger import CustomLoggingCallback, initialize_loggers
+from asr_thesis_project.utils.metrics import create_metric
 
-from data.data_collator import (
+from asr_thesis_project.data.data_collator import (
     DataCollatorCTCWithPadding,
     DataCollatorSpeechSeq2SeqWithPadding,
 )

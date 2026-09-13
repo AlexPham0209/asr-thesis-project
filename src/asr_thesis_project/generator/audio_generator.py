@@ -12,7 +12,7 @@ import torch
 import torchaudio
 import nest_asyncio
 
-from generator.generator import BaseGenerator
+from asr_thesis_project.generator.generator import BaseGenerator
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
@@ -21,6 +21,7 @@ logger = logging.getLogger("inference")
 class GeminiMultimodalGenerator(BaseGenerator):
     def __init__(
         self,
+        api_key: str,
         system_prompt: str,
         model_name: str = "gemini-2.5-flash",
         max_concurrent: int = 10,
@@ -30,7 +31,7 @@ class GeminiMultimodalGenerator(BaseGenerator):
         self.system_prompt = system_prompt
         self.max_concurrent = max_concurrent
         self.use_async = use_async
-        self.client = genai.Client()
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
         self.sample_rate = sample_rate
 

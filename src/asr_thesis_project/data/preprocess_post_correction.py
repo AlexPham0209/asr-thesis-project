@@ -1,7 +1,7 @@
-from data.normalizer import contains_equation, has_valid_equation
+from asr_thesis_project.data.normalizer import contains_equation, has_valid_equation
 from transformers import AutoTokenizer
 
-from data.filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter
 
 
 def create_messages(text, label=None):

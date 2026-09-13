@@ -5,7 +5,7 @@ import pandas as pd
 
 import evaluate
 
-from data.normalize_equation import NormalizeFormula
+from asr_thesis_project.data.normalize_equation import NormalizeFormula
 
 logger = logging.getLogger("finetuning")
 

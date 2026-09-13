@@ -1,4 +1,4 @@
-from utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 import torch
 import numpy as np
 import logging

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoFeatureExtractor, AutoModel, WhisperFeatureExtractor
 
-from models.clap_model import WhisperEmbeddingModule
+from asr_thesis_project.models.clap_model import WhisperEmbeddingModule
 
 
 class BaseEmbedding(ABC):

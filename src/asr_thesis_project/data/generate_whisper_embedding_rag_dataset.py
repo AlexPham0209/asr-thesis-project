@@ -1,8 +1,8 @@
 import chromadb
 import datasets
 import torchaudio
-from filters import combined_filter
-from embeddings.embedding import WhisperEmbedding
+from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.embeddings.embedding import WhisperEmbedding
 
 
 def main():

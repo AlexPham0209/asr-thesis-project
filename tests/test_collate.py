@@ -2,7 +2,7 @@ import pytest
 import torch
 from transformers import AutoProcessor
 
-from src.data.data_collator import (
+from asr_thesis_project.data.data_collator import (
     DataCollatorCTCWithPadding,
     DataCollatorSpeechSeq2SeqWithPadding,
 )

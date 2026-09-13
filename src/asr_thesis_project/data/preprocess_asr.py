@@ -1,9 +1,9 @@
 from datasets.features import Audio
-from data.normalizer import contains_equation, has_valid_equation
+from asr_thesis_project.data.normalizer import contains_equation, has_valid_equation
 import torchaudio
 import logging
 
-from data.filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter
 
 logger = logging.getLogger("finetuning")
 

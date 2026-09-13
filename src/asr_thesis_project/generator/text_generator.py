@@ -13,7 +13,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import nest_asyncio
 
-from generator.generator import BaseGenerator
+from asr_thesis_project.generator.generator import BaseGenerator
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")

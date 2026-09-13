@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from transformers import ClapModel, ClapProcessor
 
-from filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter
 
 
 def main():

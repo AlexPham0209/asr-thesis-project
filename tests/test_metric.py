@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 # Assuming your function is saved in a file named core_metrics.py
-from src.utils.metrics import create_metric
+from asr_thesis_project.utils.metrics import create_metric
 
 
 @pytest.fixture
@@ -33,8 +33,8 @@ def mock_eval_prediction():
     return pred
 
 
-@patch("src.metrics.asr_metric.wer")
-@patch("src.metrics.asr_metric.cer")
+@patch("metrics.asr_metric.wer")
+@patch("metrics.asr_metric.cer")
 def test_compute_metrics_success(
     mock_cer, mock_wer, mock_processor, mock_eval_prediction
 ):
@@ -73,8 +73,8 @@ def test_compute_metrics_success(
     )
 
 
-@patch("src.metrics.asr_metric.wer")
-@patch("src.metrics.asr_metric.cer")
+@patch("metrics.asr_metric.wer")
+@patch("metrics.asr_metric.cer")
 def test_create_metric_returns_callable(mock_cer, mock_wer, mock_processor):
     """Test that create_metric successfully returns a curried callable function."""
     compute_metrics_fn = create_metric(mock_processor)

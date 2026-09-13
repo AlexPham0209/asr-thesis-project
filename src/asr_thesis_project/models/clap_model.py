@@ -58,7 +58,7 @@ class WhisperEmbeddingModule(nn.Module):
 
 
 class MathBERTEmbeddingModule(nn.Module):
-    def __init__(self, embed_dim: int):
+    def __init__(self):
         super().__init__()
         self.model = AutoModel.from_pretrained(
             "math-similarity/Bert-MLM_arXiv-MP-class_zbMath"

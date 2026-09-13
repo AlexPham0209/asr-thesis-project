@@ -1,7 +1,7 @@
 import chromadb
 import datasets
 
-from filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter
 
 
 def main():
