@@ -22,3 +22,5 @@ use_lora: false
 use_hyperparameter_search: false
 n_trials: 2
 use_timestamp: true
+
+resume_from_checkpoint: false

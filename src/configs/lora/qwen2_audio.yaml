@@ -1,0 +1,12 @@
+# @package _global_
+
+lora_config:
+  r: 16
+  lora_alpha: 32
+  # Regex (PEFT full-matches strings): adapt only the language model's
+  # projections. A plain name list would also hit q/k/v_proj in the Whisper-style
+  # audio encoder.
+  target_modules: '.*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)'
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"

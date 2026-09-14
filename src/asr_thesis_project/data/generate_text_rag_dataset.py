@@ -4,7 +4,7 @@ For every (filtered) training row this stores:
   * a MathBERT embedding of `whisper_text` (the ASR output)  -> Chroma vector
   * `whisper_text`                                            -> Chroma document
   * {target: sentence, ...}                                   -> Chroma metadata
-  * (store_audio) the clip as 16 kHz mono WAV                 -> <db_path>/audio/<collection>/id_N.wav
+  * (store_audio) the clip as 16 kHz mono WAV                 -> <db_path>/audio/<collection>/id_N.flac
                                                                  + `audio_path` in the metadata
 
 Queried by PostCorrectionRAG (text in, text out) and by the cascade mode of
@@ -19,7 +19,7 @@ import datasets
 import hydra
 from omegaconf import DictConfig
 
-from asr_thesis_project.data.audio_utils import decode_audio, write_wav
+from asr_thesis_project.utils.audio import decode_audio, write
 from asr_thesis_project.data.filters import combined_filter
 
 
@@ -40,21 +40,19 @@ def main(cfg: DictConfig):
     db_path = Path(cfg.get("db_path", "./vector_db"))
     collection_name = cfg.get("collection_name", "speech2latex-mathbert-text")
     store_audio = cfg.get("store_audio", True)
-    audio_sr = cfg.get("audio_sampling_rate", 16000)
+    audio_sampling_rate = cfg.get("audio_sampling_rate", 16000)
     audio_rel_dir = Path("audio") / collection_name
 
     client = chromadb.PersistentClient(path=str(db_path))
     collection = client.get_or_create_collection(
         name=collection_name,
-        # Recorded so the inference side can refuse to query with a different
-        # embedder (MathBERT and whisper-small are both 768-d — a mismatch is silent).
         metadata={
             "hnsw:space": "cosine",
             "embedder": cfg.embedding._target_,
             "embedder_model": cfg.embedding.get("model_name", ""),
             "source_split": split,
             "has_audio": bool(store_audio),
-            "audio_sampling_rate": int(audio_sr),
+            "audio_sampling_rate": int(audio_sampling_rate),
         },
     )
 
@@ -78,18 +76,19 @@ def main(cfg: DictConfig):
             meta = {"target": target_sentences[k], "dataset_index": int(j)}
 
             if store_audio:
-                rel_path = audio_rel_dir / f"{doc_id}.wav"
+                rel_path = audio_rel_dir / f"{doc_id}.flac"
+                
                 out_path = db_path / rel_path
                 if out_path.exists():
-                    # resumable: don't re-decode clips already on disk
-                    duration_s = None
+                    duration = None
                 else:
-                    wav, duration_s = decode_audio(batch["audio_path"][k], audio_sr)
-                    write_wav(out_path, wav, audio_sr)
-                meta["audio_path"] = rel_path.as_posix()  # relative to db_path
-                meta["sample_rate"] = int(audio_sr)
-                if duration_s is not None:
-                    meta["duration_s"] = float(duration_s)
+                    wav, duration = decode_audio(batch["audio_path"][k], audio_sampling_rate)
+                    write(out_path, wav, audio_sampling_rate)
+                
+                meta["audio_path"] = rel_path.as_posix() 
+                meta["sample_rate"] = int(audio_sampling_rate)
+                if duration is not None:
+                    meta["duration"] = float(duration)
 
             ids.append(doc_id)
             metadatas.append(meta)

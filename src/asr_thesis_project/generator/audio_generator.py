@@ -21,7 +21,7 @@ from asr_thesis_project.generator.generator import (
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 
-def tensor_to_wav_bytes(audio: torch.Tensor, sample_rate: int) -> bytes:
+def tensor_to_bytes(audio: torch.Tensor, sample_rate: int, format="flac") -> bytes:
     """Encode a float waveform to in-memory WAV bytes.
 
     torchaudio.save() in >=2.9 delegates to torchcodec's AudioEncoder.to_file,
@@ -33,7 +33,7 @@ def tensor_to_wav_bytes(audio: torch.Tensor, sample_rate: int) -> bytes:
     elif audio.ndim == 2 and audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)  # downmix to mono
 
-    encoded = AudioEncoder(audio, sample_rate=sample_rate).to_tensor(format="wav")
+    encoded = AudioEncoder(audio, sample_rate=sample_rate).to_tensor(format=format)
     return encoded.numpy().tobytes()
 
 
@@ -41,7 +41,6 @@ def tensor_to_wav_bytes(audio: torch.Tensor, sample_rate: int) -> bytes:
 def load_audio_bytes(path: str) -> bytes:
     """Cached read of a stored example clip; the same neighbours recur often."""
     return Path(path).read_bytes()
-
 
 
 class GeminiMultimodalGenerator(BaseGenerator):
@@ -140,9 +139,8 @@ class GeminiMultimodalGenerator(BaseGenerator):
                 audio = self._example_audio(ex)
                 if audio is not None:
                     parts.append(f"Example {k} audio:")
-                    parts.append(types.Part.from_bytes(data=audio, mime_type="audio/wav"))
+                    parts.append(types.Part.from_bytes(data=audio, mime_type="audio/flac"))
                 elif self.include_text_fallback:
-                    # No stored clip (text-only index) -> fall back to the ASR text.
                     parts.append(f"Example {k} ASR transcript: {ex.document}")
                 parts.append(f"Example {k} transcription: {ex.target}")
 
@@ -159,8 +157,8 @@ class GeminiMultimodalGenerator(BaseGenerator):
         )
         parts.append(
             types.Part.from_bytes(
-                data=tensor_to_wav_bytes(query_audio, self.sample_rate),
-                mime_type="audio/wav",
+                data=tensor_to_bytes(query_audio, self.sample_rate),
+                mime_type="audio/flac",
             )
         )
         return parts

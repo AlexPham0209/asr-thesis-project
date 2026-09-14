@@ -4,6 +4,7 @@ import logging
 import os
 import json
 
+import accelerate
 from dotenv import load_dotenv
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -252,6 +253,7 @@ def main(cfg: DictConfig):
         hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     )
     latex_normalizer = create_latex_normalizer(normalizer=normalizer)
+    bos_token_id = model.config.decoder_start_token_id
 
     # Creating Dataset and Dataloader
     if not cfg.get("dataset"):
@@ -273,9 +275,10 @@ def main(cfg: DictConfig):
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
 
-    train = preprocess_fn(train)
-    valid = preprocess_fn(valid)
-    test = preprocess_fn(test)
+    with accelerate.PartialState().main_process_first():
+        train = preprocess_fn(train)
+        valid = preprocess_fn(valid)
+        test = preprocess_fn(test)
 
     # Creating metrics
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
@@ -312,7 +315,7 @@ def main(cfg: DictConfig):
             train=train,
             valid=valid,
             compute_metrics=compute_metrics,
-            data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor),
+            data_collator=DataCollatorSpeechSeq2SeqWithPadding(processor=processor, bos_token_id=bos_token_id),
             model_directory=model_directory,
         )
     )
@@ -381,7 +384,8 @@ def main(cfg: DictConfig):
                     valid=valid,
                     compute_metrics=compute_metrics,
                     data_collator=DataCollatorSpeechSeq2SeqWithPadding(
-                        processor=processor
+                        processor=processor,
+                        bos_token_id=bos_token_id
                     ),
                     model_directory=model_directory,
                 )
@@ -389,7 +393,7 @@ def main(cfg: DictConfig):
 
     # Training model with best run hyperparameters
     train_results = trainer.train(
-        resume_from_checkpoint=cfg.get("use_timestamp", False)
+        resume_from_checkpoint=cfg.get("resume_from_checkpoint", False)
     )
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
@@ -403,7 +407,7 @@ def main(cfg: DictConfig):
     # Evaluate using the validation dataset
     with torch.autocast(
         device_type=device,
-        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported(including_emulation=False) else torch.bfloat16,
     ):
         valid_metrics = trainer.evaluate()
 

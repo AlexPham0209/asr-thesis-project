@@ -23,6 +23,7 @@ from transformers import (
 from peft import PeftModel
 
 from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.asr import run_asr_batch
 from asr_thesis_project.utils.logger import initialize_loggers
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
@@ -33,33 +34,6 @@ logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-
-def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
-    """Stage 1: Audio -> Raw ASR Predictions"""
-    audios = []
-    for audio in batch["audio_path"]:
-        samples = audio.get_all_samples()
-        audio_tensor = samples.data.squeeze(dim=0)
-
-        if samples.sample_rate != target_sampling_rate:
-            audio_tensor = torchaudio.functional.resample(
-                audio_tensor,
-                orig_freq=samples.sample_rate,
-                new_freq=target_sampling_rate,
-            )
-        audios.append(audio_tensor.numpy())
-
-    inputs = asr_processor(
-        audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
-    ).to(asr_model.device)
-
-    with torch.no_grad():
-        generated_ids = asr_model.generate(
-            inputs["input_features"], language="english", task="transcribe"
-        )
-
-    transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
-    return {"raw_asr_predictions": transcriptions, "references": batch["sentence"]}
 
 
 def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
@@ -77,7 +51,7 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     ]
 
     llm_inputs = llm_tokenizer(
-        prompts, return_tensors="pt", padding=True, truncation=True
+        prompts, return_tensors="pt", add_special_tokens=False, padding=True, truncation=True
     ).to(llm_model.device)
 
     with torch.no_grad():
@@ -167,7 +141,11 @@ def main(cfg: DictConfig):
     )
 
     logger.info(f"Loading LLM model: {llm_base_model}")
-    llm_tokenizer = AutoTokenizer.from_pretrained(llm_base_model)
+    llm_tokenizer = AutoTokenizer.from_pretrained(
+        llm_peft_path 
+        if llm_peft_path and os.path.exists(llm_peft_path) 
+        else llm_base_model
+    )
     llm_tokenizer.padding_side = "left"
     if llm_tokenizer.pad_token is None:
         llm_tokenizer.pad_token = llm_tokenizer.eos_token
@@ -181,7 +159,9 @@ def main(cfg: DictConfig):
     if llm_peft_path and os.path.exists(llm_peft_path):
         logger.info(f"Applying LoRA weights from: {llm_peft_path}")
         llm_model = PeftModel.from_pretrained(llm_model, llm_peft_path)
-
+    elif llm_peft_path:
+        raise ValueError("Invalid PEFT path")
+        
     llm_model.eval()
 
     logger.info("Executing Stage 2: LLM Post-Correction...")

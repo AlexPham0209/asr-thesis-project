@@ -1,0 +1,14 @@
+# @package _global_
+model_name: "Qwen2-Audio-7B-Instruct"
+
+model:
+  _target_: transformers.Qwen2AudioForConditionalGeneration.from_pretrained
+  pretrained_model_name_or_path: "Qwen/Qwen2-Audio-7B-Instruct"
+  # fp16 base weights (V100 has no native bf16). LoRA adapters are created in
+  # fp32 by PEFT, which is what AMP needs. Full fine-tuning needs float32 here.
+  dtype: float16
+  attn_implementation: "sdpa"
+
+processor:
+  _target_: transformers.AutoProcessor.from_pretrained
+  pretrained_model_name_or_path: "Qwen/Qwen2-Audio-7B-Instruct"

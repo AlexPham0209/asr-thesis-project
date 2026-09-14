@@ -1,113 +1,97 @@
-import torchaudio
-import torch
+"""Preprocessing for decoder-only audio LLMs (Qwen2-Audio and friends).
 
-from asr_thesis_project.data.normalizer import contains_equation, has_valid_equation
-from transformers import AutoTokenizer
+Each row becomes:
+  audio          float32 waveform at the processor's sampling rate
+  prompt_text    chat-template string up to and including the assistant header
+  full_text      prompt_text + label + end-of-turn
+  prompt_length  number of tokens in prompt_text *after* audio-token expansion
+  label          the LaTeX sentence (kept for generation-based evaluation)
+
+The heavy processor call (mel features + audio-token expansion) is deferred to
+DataCollatorAudioLMWithPadding so we don't persist 128x3000 feature maps per row.
+"""
+
+import logging
+
 from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.audio import decode_audio
+
+logger = logging.getLogger("finetuning")
+
+SYSTEM_PROMPT = (
+    "You are an expert transcriber of spoken mathematics. Transcribe the audio into "
+    "plain English text where every mathematical expression is written as inline "
+    "LaTeX enclosed in $...$. Output only the transcription."
+)
 
 
-# 1. Add label=None to allow calling without arguments
-def create_messages(label=None):
+def create_messages(label: str | None = None) -> list[dict]:
     messages = [
-        {
-            "role": "system",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "You are an expert transcription editor. Correct the following clip of audio for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
-                },
-            ],
-        },
-        {
-            "role": "user",
-            "content": [
-                {"type": "audio"},
-            ],
-        },
+        {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
+        {"role": "user", "content": [{"type": "audio"}]},
     ]
-
-    if label:
+    if label is not None:
         messages.append(
             {"role": "assistant", "content": [{"type": "text", "text": label}]}
         )
-
     return messages
 
 
-def preprocess_speech2latex(dataset, processor, normalizer):
-    target_sampling_rate = processor.feature_extractor.sampling_rate
-    dataset = dataset.filter(combined_filter, num_proc=10)
+def _common_prefix_length(a: list[int], b: list[int]) -> int:
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
 
-    # Note: batched=False is used here since custom audio loading usually operates row-by-row
+
+def preprocess_speech2latex(dataset, processor, normalizer=None, num_proc: int = 10):
+    sampling_rate = processor.feature_extractor.sampling_rate
+
+    dataset = dataset.filter(combined_filter, num_proc=num_proc)
+
+    prompt_text = processor.apply_chat_template(
+        create_messages(), tokenize=False, add_generation_prompt=True
+    )
+
     def preprocess(sample):
-        # 2. Extract and resample audio
-        samples = sample["audio_path"].get_all_samples()
-        audio = samples.data.squeeze(dim=0)
-
-        if samples.sample_rate != target_sampling_rate:
-            audio = torchaudio.functional.resample(
-                audio, orig_freq=samples.sample_rate, new_freq=target_sampling_rate
-            )
+        wav, _ = decode_audio(sample["audio_path"], sampling_rate)
+        audio = wav.numpy()
 
         label = sample["sentence"]
-
         if normalizer:
             label = normalizer(label)
 
-        # 3. Create strings via chat template
-        prompt_messages = create_messages(label=None)
-        full_messages = create_messages(label=label)
-
-        prompt_text = processor.apply_chat_template(
-            prompt_messages, add_generation_prompt=True, tokenize=False
-        )
         full_text = processor.apply_chat_template(
-            full_messages, add_generation_prompt=False, tokenize=False
+            create_messages(label), tokenize=False, add_generation_prompt=False
         )
 
-        # 4. Process Inputs (padding=False is mandatory here)
-        # We pass audio.numpy() as Hugging Face processors typically prefer numpy for audio features
-        full_inputs = processor(
-            text=full_text,
-            audios=audio.numpy(),
-            sampling_rate=target_sampling_rate,
-            return_tensors="pt",
-            padding=False,
-        )
+        # The number of <|AUDIO|> placeholder tokens depends on the clip length,
+        # so the prompt must be tokenized *with* the audio to get its true length.
+        prompt_ids = processor(
+            text=prompt_text, audio=audio, sampling_rate=sampling_rate
+        )["input_ids"][0]
+        full_ids = processor(
+            text=full_text, audio=audio, sampling_rate=sampling_rate
+        )["input_ids"][0]
 
-        # 5. Create labels array and mask out the prompt (using -100)
-        # Tokenize just the prompt to find out how many tokens it takes
-        prompt_inputs = processor(
-            text=prompt_text, audios=audio.numpy(), return_tensors="pt", padding=False
-        )
-        prompt_length = prompt_inputs["input_ids"].shape[-1]
+        prompt_length = len(prompt_ids)
+        if list(full_ids[:prompt_length]) != list(prompt_ids):
+            # BPE merged across the prompt/answer boundary; mask the shared prefix.
+            prompt_length = _common_prefix_length(list(full_ids), list(prompt_ids))
+            logger.warning(
+                f"Prompt is not a token prefix of the full sequence; masking {prompt_length} tokens."
+            )
 
-        # Copy input_ids to create the labels
-        labels = full_inputs["input_ids"].clone()
-
-        # Mask out the prompt tokens so the model only calculates loss on the generated label
-        labels[0, :prompt_length] = -100
-
-        # 6. Unroll dict and remove the fake batch dimension (squeeze 0)
-        processed_sample = {
-            "input_ids": full_inputs["input_ids"].squeeze(0),
-            "attention_mask": full_inputs["attention_mask"].squeeze(0),
-            "labels": labels.squeeze(0),
-            "input": prompt_text,  # Kept string for inference loop to use
-            "label": label,  # Kept string for WER/CER evaluation calculation
+        return {
+            "audio": audio,
+            "prompt_text": prompt_text,
+            "full_text": full_text,
             "prompt_length": prompt_length,
+            "label": label,
         }
 
-        # Dynamically add audio specific features (e.g., QwenAudio outputs `audio_values`)
-        # Squeeze them so the data collator can batch them properly later
-        for key in full_inputs.keys():
-            if key not in ["input_ids", "attention_mask"]:
-                processed_sample[key] = full_inputs[key].squeeze(0)
-
-        return processed_sample
-
-    # Map across the entire dataset. remove_columns ensures we don't carry over unbatched old columns.
-    dataset = dataset.map(
-        preprocess, batched=False, remove_columns=dataset.column_names
+    return dataset.map(
+        preprocess, remove_columns=dataset.column_names, num_proc=num_proc
     )
-    return dataset

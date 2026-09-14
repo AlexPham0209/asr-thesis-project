@@ -17,7 +17,7 @@ import datasets
 import hydra
 from omegaconf import DictConfig
 
-from asr_thesis_project.data.audio_utils import resample, to_mono, write_wav
+from asr_thesis_project.utils.audio import resample, to_mono, write
 from asr_thesis_project.data.filters import combined_filter
 
 
@@ -27,8 +27,8 @@ from asr_thesis_project.data.filters import combined_filter
 )
 def main(cfg: DictConfig):
     embedder = hydra.utils.instantiate(cfg.embedding)
-    embed_sr = embedder.sampling_rate
-    store_sr = cfg.get("audio_sampling_rate", 16000)
+    embedded_sampling_rate = embedder.sampling_rate
+    audio_sampling_rate = cfg.get("audio_sampling_rate", 16000)
 
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
     split = cfg.get("split", "sentences_train")
@@ -45,14 +45,12 @@ def main(cfg: DictConfig):
     client = chromadb.PersistentClient(path=str(db_path))
     collection = client.get_or_create_collection(
         name=collection_name,
-        # Recorded so the inference side can refuse to query with a different
-        # embedder / sample rate (same-dimension mismatches are otherwise silent).
         metadata={
             "hnsw:space": "cosine",
             "embedder": cfg.embedding._target_,
             "embedder_model": cfg.embedding.get("model_name", ""),
-            "embedder_sampling_rate": int(embed_sr),
-            "audio_sampling_rate": int(store_sr),
+            "embedder_sampling_rate": int(embedded_sampling_rate),
+            "audio_sampling_rate": int(audio_sampling_rate),
             "source_split": split,
             "has_audio": True,
         },
@@ -73,24 +71,24 @@ def main(cfg: DictConfig):
         for j, audio in zip(range(start, end), batch["audio_path"]):
             samples = audio.get_all_samples()
             wav = to_mono(samples.data)
-            orig_sr = samples.sample_rate
+            original_sampling_rate = samples.sample_rate
 
             # 1. waveform for the embedder
-            embed_audios.append(resample(wav, orig_sr, embed_sr).numpy())
+            embed_audios.append(resample(wav, original_sampling_rate, embedded_sampling_rate).numpy())
 
             # 2. stored clip for the generator (write_wav skips existing files -> resumable)
             doc_id = f"id_{j}"
-            rel_path = audio_rel_dir / f"{doc_id}.wav"
-            write_wav(db_path / rel_path, resample(wav, orig_sr, store_sr), store_sr)
+            audio_path = audio_rel_dir / f"{doc_id}.flac"
+            write(db_path / audio_path, resample(wav, original_sampling_rate, audio_sampling_rate), audio_sampling_rate)
 
             ids.append(doc_id)
             metadatas.append(
                 {
                     "target": target_sentences[j - start],
                     "source_text": source_sentences[j - start],
-                    "audio_path": rel_path.as_posix(),  # relative to db_path
-                    "sample_rate": int(store_sr),
-                    "duration_s": float(wav.shape[-1] / orig_sr),
+                    "audio_path": audio_path.as_posix(),  # relative to db_path
+                    "sample_rate": int(audio_sampling_rate),
+                    "duration": float(wav.shape[-1] / original_sampling_rate),
                     "dataset_index": int(j),
                 }
             )

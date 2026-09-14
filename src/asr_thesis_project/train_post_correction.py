@@ -4,6 +4,7 @@ import json
 import logging
 import os
 
+import accelerate
 from dotenv import load_dotenv
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -74,7 +75,7 @@ def inference(model, tokenizer, normalizer, dataset):
         input_text = sample["input"]
         label_text = sample["label"]
 
-        inputs = tokenizer(input_text, return_tensors="pt").to(device)
+        inputs = tokenizer(input_text, return_tensors="pt", add_special_tokens=False).to(device)
 
         with torch.no_grad():
             generated_ids = model.generate(
@@ -159,8 +160,10 @@ def main(cfg: DictConfig):
         tokenizer=tokenizer,
         normalizer=normalizer if normalize_during_preprocessing else None,
     )
-    train = preprocess_fn(train)
-    test = preprocess_fn(test)
+    
+    with accelerate.PartialState().main_process_first():
+        train = preprocess_fn(train)
+        test = preprocess_fn(test)
 
     lora_config = (
         LoraConfig(**OmegaConf.to_container(cfg.lora_config, resolve=True))
@@ -273,7 +276,7 @@ def main(cfg: DictConfig):
 
     # Training and logging metrics
     train_results = trainer.train(
-        resume_from_checkpoint=cfg.get("use_timestamp", False)
+        resume_from_checkpoint=cfg.get("resume_from_checkpoint", False)
     )
     trainer.log_metrics("train", train_results.metrics)
     trainer.save_metrics("train", train_results.metrics)
@@ -287,7 +290,7 @@ def main(cfg: DictConfig):
     # Evaluate using the validation dataset
     with torch.autocast(
         device_type=device,
-        dtype=torch.float16 if not torch.cuda.is_bf16_supported() else torch.bfloat16,
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported(including_emulation=False) else torch.bfloat16,
     ):
         valid_metrics = trainer.evaluate()
     trainer.log_metrics("eval", valid_metrics)

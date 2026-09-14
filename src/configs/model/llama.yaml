@@ -7,4 +7,4 @@ model:
   trust_remote_code: True
 
 tokenizer:
-  _target_: utils.tokenizer.create_llama3_tokenizer
+  _target_: asr_thesis_project.utils.tokenizer.create_llama3_tokenizer

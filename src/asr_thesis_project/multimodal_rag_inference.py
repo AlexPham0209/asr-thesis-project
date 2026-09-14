@@ -19,7 +19,7 @@ import hydra
 from omegaconf import DictConfig
 import torch
 
-from asr_thesis_project.data.audio_utils import decode_batch_audio
+from asr_thesis_project.utils.audio import decode_batch_audio
 from asr_thesis_project.data.filters import combined_filter
 from asr_thesis_project.models.multimodal_rag import MultiModalRAG
 from asr_thesis_project.utils.asr import load_whisper, release_cuda, run_asr_batch

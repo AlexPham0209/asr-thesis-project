@@ -1,0 +1,33 @@
+# @package _global_
+
+defaults:
+  - model: qwen2_audio
+  - dataset: speech2latex_multimodal
+  - training: multimodal
+  - lora: qwen2_audio
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+  - _self_
+
+logging_directory: logs
+model_directory: models
+results_directory: results
+
+# Data
+num_proc: 10
+validation_fraction: 0.05   # carved out of sentences_train; test split is never used for selection
+seed: 42
+max_eval_samples: null      # int to cap validation and test sizes for smoke tests
+normalize_during_preprocessing: false
+
+# Training
+use_lora: true
+use_hyperparameter_search: false
+n_trials: 5
+early_stopping_patience: 5
+use_timestamp: false
+resume_from_checkpoint: false
+
+# Final generation-based evaluation on the test split
+generation_batch_size: 4
+max_new_tokens: 256

@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from dataclasses import dataclass, field
@@ -42,8 +43,9 @@ class DataCollatorCTCWithPadding:
 @dataclass
 class DataCollatorSpeechSeq2SeqWithPadding:
     processor: Any
+    bos_token_id: int
     padding: Union[bool, str] = "longest"
-
+    
     def __call__(
         self, features: List[Dict[str, Union[List[int], torch.Tensor]]]
     ) -> Dict[str, torch.Tensor]:
@@ -69,7 +71,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
             labels_batch.attention_mask.ne(1), -100
         )
 
-        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+        if (labels[:, 0] == self.bos_token_id).all().cpu().item():
             labels = labels[:, 1:]
 
         batch["labels"] = labels
@@ -78,63 +80,36 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
 
 @dataclass
-class DataCollatorSpeechCausalLMWithPadding:
+class DataCollatorAudioLMWithPadding:
+    """Batch collator for decoder-only audio LLMs (Qwen2-Audio, Voxtral, ...).
+
+    Rows come from preprocess_multimodal.preprocess_speech2latex: raw waveform +
+    chat-template strings + prompt_length. The processor is run here, per batch,
+    so audio-token expansion, mel features and text padding all come from one
+    call and stay consistent. Requires TrainingArguments(remove_unused_columns=False).
+    """
+
     processor: Any
-    padding: Union[bool, str] = "longest"
+    sampling_rate: int
 
-    def __call__(
-        self, features: List[Dict[str, Union[List[int], torch.Tensor]]]
-    ) -> Dict[str, torch.Tensor]:
+    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+        audios = [np.asarray(f["audio"], dtype=np.float32) for f in features]
+        texts = [f["full_text"] for f in features]
 
-        # 1. Pad Text Inputs (input_ids and attention_mask)
-        # We must keep these for Decoder-only models like QwenAudio
-        text_features = [
-            {
-                "input_ids": feature["input_ids"],
-                "attention_mask": feature["attention_mask"],
-            }
-            for feature in features
-        ]
-
-        batch = self.processor.tokenizer.pad(
-            text_features, padding=self.padding, return_tensors="pt"
+        # Right padding so `labels[i, :prompt_length]` indexes the real prompt.
+        self.processor.tokenizer.padding_side = "right"
+        batch = self.processor(
+            text=texts,
+            audio=audios,
+            sampling_rate=self.sampling_rate,
+            padding=True,
+            return_tensors="pt",
         )
 
-        # 2. Pad Labels
-        # We wrap labels in an "input_ids" key just to trick the tokenizer's padding logic
-        label_features = [{"input_ids": feature["labels"]} for feature in features]
-        labels_batch = self.processor.tokenizer.pad(
-            label_features, padding=self.padding, return_tensors="pt"
-        )
-
-        # Replace padding token ids in the labels with -100 so loss is not computed on padding
-        labels = labels_batch["input_ids"].masked_fill(
-            labels_batch.attention_mask.ne(1), -100
-        )
+        labels = batch["input_ids"].clone()
+        labels[batch["attention_mask"] == 0] = -100
+        for i, f in enumerate(features):
+            labels[i, : int(f["prompt_length"])] = -100  # loss only on the answer
         batch["labels"] = labels
-
-        # 3. Pad Audio Features
-        # QwenAudio/Qwen2Audio might output 'audio_values' or 'input_features' depending on the version
-        audio_key = (
-            "input_features"
-            if "input_features" in features[0]
-            else ("audio_values" if "audio_values" in features[0] else None)
-        )
-
-        audio_keys = [
-            k
-            for k in ("input_features", "audio_values", "feature_attention_mask")
-            if k in features[0]
-        ]
-        if audio_keys:
-            audio_features = [
-                {k: feature[k] for k in audio_keys} for feature in features
-            ]
-            audio_padding = True if self.padding == "longest" else self.padding
-            audio_batch = self.processor.feature_extractor.pad(
-                audio_features, padding=audio_padding, return_tensors="pt"
-            )
-            for key in audio_keys:
-                batch[key] = audio_batch[key]
 
         return batch

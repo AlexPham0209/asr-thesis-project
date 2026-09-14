@@ -6,7 +6,7 @@ import logging
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
-from asr_thesis_project.data.audio_utils import decode_batch_audio
+from asr_thesis_project.utils.audio import decode_batch_audio
 
 logger = logging.getLogger("inference")
 

@@ -14,33 +14,32 @@ def to_mono(wav: torch.Tensor) -> torch.Tensor:
     return wav
 
 
-def resample(wav: torch.Tensor, orig_sr: int, target_sr: int) -> torch.Tensor:
-    if orig_sr == target_sr:
+def resample(wav: torch.Tensor, original_sampling_rte: int, target_sampling_rate: int) -> torch.Tensor:
+    if original_sampling_rte == target_sampling_rate:
         return wav
-    return torchaudio.functional.resample(wav, orig_freq=orig_sr, new_freq=target_sr)
+    return torchaudio.functional.resample(wav, orig_freq=original_sampling_rte, new_freq=target_sampling_rate)
 
 
 def decode_audio(audio, target_sr: int) -> tuple[torch.Tensor, float]:
     """Decode one `datasets` Audio cell (a torchcodec AudioDecoder) to a mono
-    waveform at `target_sr`. Returns (waveform, duration_seconds)."""
+    waveform at `target_sr`. Returns (waveform, duration)."""
     samples = audio.get_all_samples()
     wav = to_mono(samples.data)
-    duration_s = wav.shape[-1] / samples.sample_rate
-    return resample(wav, samples.sample_rate, target_sr), duration_s
+    duration = wav.shape[-1] / samples.sample_rate
+    return resample(wav, samples.sample_rate, target_sr), duration
 
 
 def decode_batch_audio(audio_column, target_sr: int) -> list[torch.Tensor]:
     """The per-batch decode loop used by every RAG/ASR map function."""
     return [decode_audio(audio, target_sr)[0] for audio in audio_column]
 
-
-def write_wav(path: str | Path, wav: torch.Tensor, sample_rate: int, overwrite: bool = False) -> Path:
+def write(path: str | Path, audio: torch.Tensor, sample_rate: int, overwrite: bool = False) -> Path:
     """Write a mono waveform to `path` as WAV via torchcodec. Skips existing
     files unless `overwrite`, so index rebuilds are resumable."""
     path = Path(path)
     if path.exists() and not overwrite:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    wav = to_mono(wav).to(torch.float32).unsqueeze(0)
-    AudioEncoder(wav, sample_rate=sample_rate).to_file(path)
+    audio = to_mono(audio).to(torch.float32).unsqueeze(0)
+    AudioEncoder(audio, sample_rate=sample_rate).to_file(path)
     return path

@@ -7,7 +7,7 @@ lora_config:
     "q_proj",
     "v_proj",
     "k_proj",
-    "out_proj",
+    "o_proj",
     "gate_proj",
     "up_proj",
     "down_proj",

@@ -22,41 +22,13 @@ from transformers import (
 from peft import PeftModel
 
 from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.utils.asr import run_asr_batch
 from asr_thesis_project.utils.logger import initialize_loggers
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
-    """Stage 1: Audio -> Raw ASR Predictions"""
-    audios = []
-    for audio in batch["audio_path"]:
-        samples = audio.get_all_samples()
-        audio_tensor = samples.data.squeeze(dim=0)
-
-        if samples.sample_rate != target_sampling_rate:
-            audio_tensor = torchaudio.functional.resample(
-                audio_tensor,
-                orig_freq=samples.sample_rate,
-                new_freq=target_sampling_rate,
-            )
-        audios.append(audio_tensor.numpy())
-
-    inputs = asr_processor(
-        audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
-    ).to(asr_model.device)
-
-    with torch.no_grad():
-        generated_ids = asr_model.generate(
-            inputs["input_features"], language="english", task="transcribe"
-        )
-
-    transcriptions = asr_processor.batch_decode(generated_ids, skip_special_tokens=True)
-    return {"predictions": transcriptions, "references": batch["sentence"]}
-
 
 @hydra.main(
     version_base=None, config_path="../configs", config_name="asr_inference_config"

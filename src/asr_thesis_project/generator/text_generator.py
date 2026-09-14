@@ -218,7 +218,7 @@ class HuggingFaceGenerator(BaseGenerator):
             prompts,
             return_tensors="pt",
             padding=True,
-            truncation=True,
+            add_special_tokens=False,
             max_length=self.max_input_length,
         ).to(self.model.device)
 
