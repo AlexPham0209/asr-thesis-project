@@ -1,0 +1,9 @@
+# Composed under `embedding:` (no @package _global_).
+# intfloat/e5-base-v2: 768-d, masked-mean pooling. E5 requires an input prefix;
+# for a symmetric task (ASR transcript vs ASR transcript) it is "query: " on
+# both the index and the query side.
+_target_: asr_thesis_project.embeddings.embedding.SentenceEmbedding
+model_name: "intfloat/e5-base-v2"
+pooling: mean
+prefix: "query: "
+max_length: 512

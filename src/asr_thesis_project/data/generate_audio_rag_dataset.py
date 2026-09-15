@@ -18,7 +18,7 @@ import hydra
 from omegaconf import DictConfig
 
 from asr_thesis_project.utils.audio import resample, to_mono, write
-from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter, dedupe_by_sentence_id
 
 
 # config_path is relative to *this file* (src/asr_thesis_project/data/)
@@ -33,6 +33,13 @@ def main(cfg: DictConfig):
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
     split = cfg.get("split", "sentences_train")
     dataset = datasets.load_dataset(dataset_name, name="default", split=split)
+
+    # One reading per sentence (human preferred) *before* the audio-decoding
+    # filter: ~8x fewer clips to decode, embed and store.
+    if cfg.get("dedupe_by_sentence", True):
+        n_before = len(dataset)
+        dataset = dedupe_by_sentence_id(dataset, prefer_human=cfg.get("prefer_human", True))
+        print(f"Deduped by sentence_id: {n_before} -> {len(dataset)} rows")
 
     print("Filtering dataset...")
     dataset = dataset.filter(combined_filter, num_proc=cfg.get("num_proc", 10))
@@ -53,6 +60,7 @@ def main(cfg: DictConfig):
             "audio_sampling_rate": int(audio_sampling_rate),
             "source_split": split,
             "has_audio": True,
+            "deduped_by_sentence": bool(cfg.get("dedupe_by_sentence", True)),
         },
     )
 
@@ -90,6 +98,9 @@ def main(cfg: DictConfig):
                     "sample_rate": int(audio_sampling_rate),
                     "duration": float(wav.shape[-1] / original_sampling_rate),
                     "dataset_index": int(j),
+                    "sentence_id": int(batch["sentence_id"][j - start]),
+                    "spk": batch["spk"][j - start],
+                    "is_tts": int(batch["is_tts"][j - start]),
                 }
             )
 

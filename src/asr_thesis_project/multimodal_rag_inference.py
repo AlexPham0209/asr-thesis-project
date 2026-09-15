@@ -77,6 +77,16 @@ def check_collection(collection, cfg, embedding, query_mode: str):
             f"but the query embedder is {expected}."
         )
 
+    # Same class can wrap different checkpoints of the same dimension
+    # (bge vs e5, both 768-d), so the model name has to match too.
+    built_model = meta.get("embedder_model")
+    expected_model = cfg.embedding.get("model_name")
+    if built_model and expected_model and built_model != expected_model:
+        raise RuntimeError(
+            f"Collection '{collection.name}' was built with model {built_model!r}, "
+            f"but the query embedder uses {expected_model!r}."
+        )
+
     if query_mode == "audio":
         built_sr = meta.get("embedder_sampling_rate")
         if built_sr and int(built_sr) != int(embedding.sampling_rate):

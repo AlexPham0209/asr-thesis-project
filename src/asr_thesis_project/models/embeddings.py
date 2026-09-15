@@ -79,3 +79,33 @@ class MathBERTEmbeddingModule(nn.Module):
 
         # Mean-pool using the explicitly passed attention_mask
         return mean_pooling(embeddings, attention_mask)
+
+class SentenceEmbeddingModule(nn.Module):
+    """Generic encoder for sentence-embedding checkpoints (BGE, E5, GTE, ...).
+
+    Same shape as MathBERTEmbeddingModule, but the pooling is configurable
+    because the two families differ:
+      * "cls"  — BAAI/bge-*: the [CLS] hidden state
+      * "mean" — intfloat/e5-*: attention-masked mean of the token states
+    """
+
+    def __init__(self, model_name: str, pooling: str = "mean"):
+        super().__init__()
+        if pooling not in ("cls", "mean"):
+            raise ValueError(f"pooling must be 'cls' or 'mean', got {pooling!r}")
+        self.model = AutoModel.from_pretrained(model_name)
+        self.pooling = pooling
+        self.hidden_dim = self.model.config.hidden_size
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, **kwargs)
+        embeddings = outputs.last_hidden_state
+
+        if self.pooling == "cls":
+            return embeddings[:, 0]
+        return mean_pooling(embeddings, attention_mask)

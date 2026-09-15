@@ -38,12 +38,23 @@ def check_collection_matches_embedder(collection, cfg):
             f"Collection '{collection.name}' at {cfg.db_path} is empty. Build it first with "
             "`python -m asr_thesis_project.data.generate_text_rag_dataset`."
         )
-    built_with = (collection.metadata or {}).get("embedder")
+    meta = collection.metadata or {}
+    built_with = meta.get("embedder")
     expected = cfg.embedding._target_
     if built_with and built_with != expected:
         raise RuntimeError(
             f"Collection '{collection.name}' was built with {built_with}, "
             f"but the query embedder is {expected}."
+        )
+
+    # Same class can wrap different checkpoints of the same dimension
+    # (bge vs e5, both 768-d), so the model name has to match too.
+    built_model = meta.get("embedder_model")
+    expected_model = cfg.embedding.get("model_name")
+    if built_model and expected_model and built_model != expected_model:
+        raise RuntimeError(
+            f"Collection '{collection.name}' was built with model {built_model!r}, "
+            f"but the query embedder uses {expected_model!r}."
         )
 
 

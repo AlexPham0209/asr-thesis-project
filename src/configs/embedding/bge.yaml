@@ -1,0 +1,9 @@
+# Composed under `embedding:` (no @package _global_).
+# BAAI/bge-base-en-v1.5: 768-d, CLS pooling, no prefix needed for
+# sentence-vs-sentence similarity (the retrieval instruction is for short
+# query -> long passage setups, which this is not).
+_target_: asr_thesis_project.embeddings.embedding.SentenceEmbedding
+model_name: "BAAI/bge-base-en-v1.5"
+pooling: cls
+prefix: ""
+max_length: 512

@@ -20,7 +20,7 @@ import hydra
 from omegaconf import DictConfig
 
 from asr_thesis_project.utils.audio import decode_audio, write
-from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.data.filters import combined_filter, dedupe_by_sentence_id
 
 
 # config_path is relative to *this file* (src/asr_thesis_project/data/)
@@ -33,6 +33,13 @@ def main(cfg: DictConfig):
     dataset_name = cfg.get("dataset_name", "marsianin500/Speech2Latex")
     split = cfg.get("split", "sentences_train")
     dataset = datasets.load_dataset(dataset_name, name="default", split=split)
+
+    # One reading per sentence (human preferred) *before* the audio-decoding
+    # filter: ~8x fewer clips to decode, embed and store.
+    if cfg.get("dedupe_by_sentence", True):
+        n_before = len(dataset)
+        dataset = dedupe_by_sentence_id(dataset, prefer_human=cfg.get("prefer_human", True))
+        print(f"Deduped by sentence_id: {n_before} -> {len(dataset)} rows")
 
     print("Filtering dataset...")
     dataset = dataset.filter(combined_filter, num_proc=cfg.get("num_proc", 10))
@@ -52,6 +59,7 @@ def main(cfg: DictConfig):
             "embedder_model": cfg.embedding.get("model_name", ""),
             "source_split": split,
             "has_audio": bool(store_audio),
+            "deduped_by_sentence": bool(cfg.get("dedupe_by_sentence", True)),
             "audio_sampling_rate": int(audio_sampling_rate),
         },
     )
@@ -73,7 +81,13 @@ def main(cfg: DictConfig):
         ids, metadatas = [], []
         for k, j in enumerate(range(start, end)):
             doc_id = f"id_{j}"
-            meta = {"target": target_sentences[k], "dataset_index": int(j)}
+            meta = {
+                "target": target_sentences[k],
+                "dataset_index": int(j),
+                "sentence_id": int(batch["sentence_id"][k]),
+                "spk": batch["spk"][k],
+                "is_tts": int(batch["is_tts"][k]),
+            }
 
             if store_audio:
                 rel_path = audio_rel_dir / f"{doc_id}.flac"

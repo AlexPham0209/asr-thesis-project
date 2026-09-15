@@ -21,3 +21,8 @@ store_audio: true
 audio_sampling_rate: 16000
 
 batch_size: 32
+
+# Index one reading per sentence_id (Speech2Latex has ~8 readings per sentence:
+# 1 human + TTS voices). prefer_human keeps the human clip when one exists.
+dedupe_by_sentence: true
+prefer_human: true
