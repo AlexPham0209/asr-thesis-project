@@ -1,6 +1,10 @@
 # @package _global_
 architecture: seq2seq
 
+# NOTE: despite the file name this loads openai/whisper-tiny; kept for backwards
+# compatibility with old job scripts. Use model=whisper_tiny for new runs.
+model_name: "whisper-tiny"
+
 model:
   _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
   _partial_: true
@@ -13,5 +17,5 @@ processor:
   task: "transcribe"
 
 normalizer:
-  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer# 
+  _target_: transformers.models.whisper.english_normalizer.BasicTextNormalizer
 

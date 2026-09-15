@@ -116,18 +116,6 @@ class MathBERTEmbedding(BaseEmbedding):
         return features.cpu().tolist()
 
 class SentenceEmbedding(BaseEmbedding):
-    """Text embedder for retrieval-trained encoders (BGE, E5, ...).
-
-    Mirrors MathBERTEmbedding: tokenize -> module -> L2-normalise -> list. The
-    checkpoint-specific conventions live in the config (see
-    configs/embedding/bge.yaml and e5.yaml):
-      pooling  "cls" for bge-*, "mean" for e5-*
-      prefix   E5 expects "query: " on both sides of a symmetric task (ASR text
-               vs ASR text); BGE v1.5 needs no prefix for that.
-    The same prefix/pooling must be used to build and to query an index; the
-    collection metadata records the model name so the inference scripts can check.
-    """
-
     def __init__(
         self,
         model_name: str = "BAAI/bge-base-en-v1.5",

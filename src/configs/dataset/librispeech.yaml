@@ -20,5 +20,5 @@ dataset:
     split: "test.clean"
 
 preprocess:
-  _target_: asr_thesis_project.data.preprocess.preprocess
+  _target_: asr_thesis_project.data.preprocess_asr.preprocess
   _partial_: true

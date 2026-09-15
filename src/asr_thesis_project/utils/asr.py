@@ -2,7 +2,9 @@
 
 import gc
 import logging
+import os
 
+from peft import PeftConfig, PeftModel
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
@@ -12,22 +14,30 @@ logger = logging.getLogger("inference")
 
 
 def load_whisper(model_id: str):
-    """Returns (model, processor, feature-extractor sampling rate)."""
-    logger.info(f"Loading ASR model: {model_id}")
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, device_map="auto")
-    processor = AutoProcessor.from_pretrained(model_id)
+    adapter_config = os.path.join(model_id, "adapter_config.json")
+    if os.path.isdir(model_id) and os.path.exists(adapter_config):
+        base_model_id = PeftConfig.from_pretrained(model_id).base_model_name_or_path
+        logger.info(f"Loading ASR base model {base_model_id} + LoRA adapter {model_id}")
+        
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(base_model_id, device_map="auto")
+        model = PeftModel.from_pretrained(model, model_id).merge_and_unload()
+        processor_id = model_id if os.path.exists(os.path.join(model_id, "preprocessor_config.json")) else base_model_id
+    else:
+        logger.info(f"Loading ASR model: {model_id}")
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, device_map="auto")
+        processor_id = model_id
+
+    processor = AutoProcessor.from_pretrained(processor_id)
     return model, processor, processor.feature_extractor.sampling_rate
 
 
 def release_cuda() -> None:
-    """Call after `del`-ing a model to hand its GPU memory back before the next stage."""
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
 def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
-    """Stage 1 map function: audio -> raw ASR predictions (+ references)."""
     audios = [
         wav.numpy() for wav in decode_batch_audio(batch["audio_path"], target_sampling_rate)
     ]

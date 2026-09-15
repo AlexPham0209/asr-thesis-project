@@ -2,34 +2,33 @@
 
 defaults:
   - generator: gemini_multimodal
-  - embedding: mathbert      # cascade default. Audio mode: embedding=whisper
+  - embedding: bge     
   - _self_
 
 logging_directory: "logs_inference"
 
 # How neighbours are found. Gemini always gets the query *audio* + examples.
-#   asr_text  Whisper transcript -> MathBERT -> text index   (cascade)
+#   asr_text  Whisper transcript -> Text embedding -> text index   (cascade)
 #   audio     query waveform -> Whisper encoder -> audio index
 query_mode: asr_text
-asr_model_id: "openai/whisper-small"   # cascade only
+asr_model_id: "openai/whisper-large-v3"   # cascade only
 
-# Single decode rate for query clips sent to Gemini (and, in audio mode, to the embedder).
+
 audio_sampling_rate: 16000
 
 # Dataset
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
-max_eval_samples: null   # int to cap, null for the full split
+max_eval_samples: null   
 batch_size: 8
 
-# Vector store. Cascade: the text index (built with store_audio=true so examples
-# carry clips). Audio mode: collection_name=speech2latex-whisper-audio
+# Vector storage
 db_path: "./vector_db"
-collection_name: "speech2latex-mathbert-text"
+collection_name: "speech2latex-bge-text"
 
 # RAG
-top_n: 3                 # 0 for the no-retrieval baseline
+top_n: 3                 
 system_prompt: >-
   You are an expert transcriber of spoken mathematics. Transcribe the audio into
   plain English text where every mathematical expression is written as inline

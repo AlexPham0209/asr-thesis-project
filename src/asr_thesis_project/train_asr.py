@@ -47,7 +47,7 @@ from asr_thesis_project.data.data_collator import (
 
 import logging
 from transformers.utils import logging as hf_logging
-from peft import get_peft_model, LoraConfig
+from peft import get_peft_model, LoraConfig, PeftModel
 import warnings
 import matplotlib
 
@@ -414,10 +414,21 @@ def main(cfg: DictConfig):
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
 
-    # Saving model
     saved_directory = os.path.join(model_directory, "result")
     os.makedirs(saved_directory, exist_ok=True)
-    trainer.save_model(saved_directory)
+    
+    if trainer.is_world_process_zero():
+        final_model = trainer.accelerator.unwrap_model(trainer.model)
+        
+        if isinstance(final_model, PeftModel):
+            final_model.save_pretrained(os.path.join(saved_directory, "adapter"))
+            final_model = final_model.merge_and_unload()
+            
+        final_model.save_pretrained(saved_directory)
+        processor.save_pretrained(saved_directory)
+        
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
 
 if __name__ == "__main__":

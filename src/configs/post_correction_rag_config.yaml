@@ -2,7 +2,7 @@
 
 defaults:
   - generator: gemini      # or: huggingface
-  - embedding: mathbert
+  - embedding: bge
   - _self_
 
 logging_directory: "logs_inference"
@@ -15,11 +15,11 @@ max_eval_samples: null   # int to cap, null for the full split
 batch_size: 8
 
 # Stage 1: ASR
-asr_model_id: "openai/whisper-small"
+asr_model_id: "openai/whisper-large-v3"
 
 # Stage 2: vector store — must be the collection built by generate_text_rag_dataset.py
 db_path: "./vector_db"
-collection_name: "speech2latex-mathbert-text"
+collection_name: "speech2latex-bge-text"
 
 # RAG
 top_n: 3                 # set 0 for the no-retrieval baseline

@@ -4,7 +4,7 @@ defaults:
   - model: llama   
   - dataset: speech2latex_llm    
   - training: sft
-  - lora: qwen
+  - lora: llama
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
   - _self_

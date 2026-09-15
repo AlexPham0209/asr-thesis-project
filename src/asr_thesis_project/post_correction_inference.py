@@ -23,7 +23,7 @@ from transformers import (
 from peft import PeftModel
 
 from asr_thesis_project.data.filters import combined_filter
-from asr_thesis_project.utils.asr import run_asr_batch
+from asr_thesis_project.utils.asr import load_whisper, run_asr_batch
 from asr_thesis_project.utils.logger import initialize_loggers
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
 
@@ -104,11 +104,7 @@ def main(cfg: DictConfig):
     asr_model_id = cfg.get("asr_model_id", "openai/whisper-small")
     logger.info(f"Loading ASR model: {asr_model_id}")
 
-    asr_model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        asr_model_id, device_map="auto"
-    )
-    asr_processor = AutoProcessor.from_pretrained(asr_model_id)
-    target_sampling_rate = asr_processor.feature_extractor.sampling_rate
+    asr_model, asr_processor, target_sampling_rate = load_whisper(asr_model_id)
 
     logger.info("Executing Stage 1: ASR Inference...")
     asr_fn = functools.partial(

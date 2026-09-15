@@ -1,6 +1,8 @@
 # @package _global_
 architecture: seq2seq
 
+model_name: "whisper-tiny"
+
 model:
   _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
   _partial_: true

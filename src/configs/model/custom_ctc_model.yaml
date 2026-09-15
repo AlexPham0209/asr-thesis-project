@@ -2,7 +2,7 @@
 architecture: ctc
 
 model:
-  _target_: models.custom_ctc_model.CustomCTCModel
+  _target_: asr_thesis_project.models.custom_ctc_model.CustomCTCModel
   input_dim: 80
   hidden_dim: 256
   num_classes: 32
