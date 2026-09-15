@@ -1,0 +1,18 @@
+# @package _global_
+# Whisper-only evaluation on Speech2Latex (no post-correction). Used by asr_inference.py.
+
+logging_directory: "logs_inference"
+
+# Any AutoModelForSpeechSeq2Seq checkpoint: a hub id or a fine-tuned run, e.g.
+# "models/whisper-small_<timestamp>/result" (LoRA runs need merging first).
+asr_model_id: "openai/whisper-small"
+
+# Dataset
+dataset_name: "marsianin500/Speech2Latex"
+dataset_split: "sentences_test"
+num_proc: 10
+max_eval_samples: null   # int to cap, null for the full split (2850 rows / 428 sentences)
+batch_size: 8
+
+# Results & output
+results_directory: "results/asr"

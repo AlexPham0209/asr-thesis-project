@@ -107,10 +107,21 @@ class LatexInContextMetrics:
         )
 
         references_formulas_only, _ = self.extract_in_context_formulas_bulk(references)
+
+        scored = [
+            (p, r)
+            for p, r in zip(prediction_formulas_only, references_formulas_only)
+            if p != "$$" or r != "$$"
+        ]
+        if not scored:
+            return {"n_rows": 0}
+        prediction_formulas_only, references_formulas_only = map(list, zip(*scored))
+
         metrics = self.compute(
             prediction_formulas_only,
             references_formulas_only,
         )
+        metrics["n_rows"] = len(scored)
 
         if self.equation_normalizer:
             normalized_formulas = self.equation_normalizer(formulas_content_list)

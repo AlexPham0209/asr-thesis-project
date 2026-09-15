@@ -179,6 +179,9 @@ class HuggingFaceGenerator(BaseGenerator):
         logger.info(f"Loading tokenizer: {self.tokenizer_path}")
         self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path)
         self.tokenizer.padding_side = "left"  # required for batched generate
+        # Truncate the *start* (oldest few-shot examples), never the query at the end.
+        # This is a tokenizer attribute; passing truncation_side= per call is ignored.
+        self.tokenizer.truncation_side = "left"
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -218,6 +221,7 @@ class HuggingFaceGenerator(BaseGenerator):
             prompts,
             return_tensors="pt",
             padding=True,
+            truncation=True,
             add_special_tokens=False,
             max_length=self.max_input_length,
         ).to(self.model.device)

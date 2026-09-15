@@ -3,7 +3,7 @@
 logging_directory: "logs_inference"
 
 asr_model_id: "openai/whisper-small"
-llm_base_model: "meta-llama/Llama-3-1B-Instruct"
+llm_base_model: "meta-llama/Llama-3.2-1B-Instruct"
 llm_peft_path: "./model"
 
 system_prompt: |

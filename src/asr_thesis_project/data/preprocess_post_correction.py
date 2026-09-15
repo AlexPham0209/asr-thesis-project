@@ -23,7 +23,6 @@ def create_messages(text, label=None):
 
 
 def preprocess_speech2latex(dataset, tokenizer, normalizer):
-    dataset = dataset.remove_columns(["audio_path"])
     dataset = dataset.filter(combined_filter, num_proc=10)
 
     def preprocess(batch):

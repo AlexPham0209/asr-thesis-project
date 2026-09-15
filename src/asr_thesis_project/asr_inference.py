@@ -81,7 +81,7 @@ def main(cfg: DictConfig):
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()
     results = metrics.compute_all(
-        predictions=dataset["predictions"], references=dataset["references"]
+        predictions=dataset["raw_asr_predictions"], references=dataset["references"]
     )
 
     logger.info("------- Final Evaluation Results -------")
