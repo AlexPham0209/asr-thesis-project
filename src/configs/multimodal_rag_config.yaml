@@ -13,7 +13,6 @@ logging_directory: "logs_inference"
 query_mode: asr_text
 asr_model_id: "openai/whisper-large-v3"   # cascade only
 
-
 audio_sampling_rate: 16000
 
 # Dataset

@@ -24,12 +24,16 @@ warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger("inference")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-
 def run_rag_batch(batch, rag: PostCorrectionRAG, top_n: int):
     """Stage 2: raw ASR predictions -> RAG LaTeX post-correction"""
-    predictions = rag.inference(inputs=batch["raw_asr_predictions"], top_n=top_n)
-    return {"predictions": predictions}
-
+    predictions, examples = rag.inference_with_examples(inputs=batch["raw_asr_predictions"], top_n=top_n)
+    return {
+        "predictions": predictions,
+        "retrieved_ids": [[ex.id for ex in exs] for exs in examples],
+        "retrieved_targets": [[ex.target for ex in exs] for exs in examples],
+        "references": batch["references"] if "references" in batch else batch["sentence"],
+        "raw_asr_predictions": batch["raw_asr_predictions"]
+    }
 
 def check_collection_matches_embedder(collection, cfg):
     """Refuse to query an index built by a different embedder."""
@@ -56,7 +60,6 @@ def check_collection_matches_embedder(collection, cfg):
             f"Collection '{collection.name}' was built with model {built_model!r}, "
             f"but the query embedder uses {expected_model!r}."
         )
-
 
 @hydra.main(
     version_base=None, config_path="../configs", config_name="post_correction_rag_config"
@@ -106,9 +109,17 @@ def main(cfg: DictConfig):
     )
 
     # Keep the raw ASR output: it's the baseline every RAG number is compared against.
-    with open(os.path.join(results_directory, f"asr_{timestamp}.jsonl"), "w") as f:
-        for raw, ref in zip(dataset["raw_asr_predictions"], dataset["references"]):
-            f.write(json.dumps({"raw_asr": raw, "reference": ref}) + "\n")
+    with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
+        for i in range(len(dataset)):
+            row = dataset[i]
+            record = {
+                "prediction": row["predictions"],
+                "reference": row["references"],
+                "retrieved_ids": row["retrieved_ids"],
+                "retrieved_targets": row["retrieved_targets"],
+                "raw_asr": row["raw_asr_predictions"]
+            }
+            f.write(json.dumps(record) + "\n")
 
     del asr_model, asr_processor
     release_cuda()
@@ -164,7 +175,6 @@ def main(cfg: DictConfig):
 
     with open(os.path.join(results_directory, f"results_{timestamp}.json"), "w") as f:
         json.dump(results, f, indent=4)
-
 
 if __name__ == "__main__":
     main()

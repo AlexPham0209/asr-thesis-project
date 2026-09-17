@@ -1,7 +1,8 @@
 import logging
-from typing import Union
+from typing import Any, Sequence, Union
 
 import chromadb
+import torch
 
 from asr_thesis_project.embeddings.embedding import BaseEmbedding
 from asr_thesis_project.generator.generator import BaseGenerator, RetrievedExample
@@ -73,6 +74,34 @@ class PostCorrectionRAG:
             batch_examples.append(examples)
 
         return batch_examples
+    
+    
+    def inference_with_examples(
+            self,
+            inputs: Sequence[torch.Tensor],
+            top_n: int = 3,
+            retrieval_inputs: Sequence[Any] | None = None,
+            hints: Sequence[str] | None = None,
+        ) -> tuple[list[str], list[list[RetrievedExample]]]:
+            """Retrieve on `retrieval_inputs` (default: `inputs`), generate on `inputs`.
+    
+            `hints` are optional per-input strings (e.g. the Whisper transcript) the
+            generator may show the model alongside the audio. Returns the predictions
+            and the examples used for each, so callers can log the neighbours.
+            """
+            queries = list(inputs)
+            keys = list(retrieval_inputs) if retrieval_inputs is not None else queries
+            if len(keys) != len(queries):
+                raise ValueError(
+                    f"retrieval_inputs ({len(keys)}) and inputs ({len(queries)}) differ in length"
+                )
+    
+            batched_examples = self.retrieve(keys, top_n)
+            predictions = self.generator.generate(
+                inputs=queries, batched_examples=batched_examples, hints=hints
+            )
+            return predictions, batched_examples
+    
 
     def inference(
         self, inputs: Union[list[str], str], top_n: int = 3

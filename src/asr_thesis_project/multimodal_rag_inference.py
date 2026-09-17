@@ -110,7 +110,7 @@ def main(cfg: DictConfig):
     query_mode = cfg.get("query_mode", "asr_text")
     if query_mode not in QUERY_MODES:
         raise ValueError(f"query_mode must be one of {QUERY_MODES}, got {query_mode!r}")
-    audio_sr = int(cfg.audio_sampling_rate)
+    audio_sampling_rate = int(cfg.audio_sampling_rate)
     top_n = cfg.get("top_n", 3)
     batch_size = cfg.get("batch_size", 8)
 
@@ -164,12 +164,12 @@ def main(cfg: DictConfig):
     check_collection(collection, cfg, embedding, query_mode)
 
     generator = hydra.utils.instantiate(cfg.generator)
-    if int(getattr(generator, "sample_rate", audio_sr)) != audio_sr:
+    if int(getattr(generator, "sample_rate", audio_sampling_rate)) != audio_sampling_rate:
         raise RuntimeError(
             "generator.sample_rate must equal audio_sampling_rate; the query clips are "
             "decoded at audio_sampling_rate and sent to the generator as-is."
         )
-    if query_mode == "audio" and int(embedding.sampling_rate) != audio_sr:
+    if query_mode == "audio" and int(embedding.sampling_rate) != audio_sampling_rate:
         raise RuntimeError(
             "In audio mode embedding.sampling_rate must equal audio_sampling_rate; the "
             "same decoded tensor is used for retrieval and generation."
@@ -188,7 +188,7 @@ def main(cfg: DictConfig):
         functools.partial(
             run_rag_batch,
             rag=rag,
-            audio_sampling_rate=audio_sr,
+            audio_sampling_rate=audio_sampling_rate,
             top_n=top_n,
             query_mode=query_mode,
         ),
