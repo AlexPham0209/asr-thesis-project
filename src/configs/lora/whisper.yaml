@@ -10,4 +10,3 @@ lora_config:
   ]  
   lora_dropout: 0.05 
   bias: "none" 
-  task_type: SEQ_2_SEQ_LM

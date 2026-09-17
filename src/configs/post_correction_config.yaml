@@ -16,6 +16,7 @@ results_directory: results
 # Misc. Settings
 normalize_during_preprocessing: false
 use_lora: true
-use_hyperparameter_search: false
+use_hyperparameter_search: true
+n_trials: 2
 
 resume_from_checkpoint: false

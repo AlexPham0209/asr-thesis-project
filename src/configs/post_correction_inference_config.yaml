@@ -12,8 +12,15 @@ llm_peft_path: "models/Llama-3.2-1B-Instruct/result"
 # Must be identical to the training prompt in
 # asr_thesis_project.data.preprocess_post_correction.create_messages, otherwise the
 # fine-tuned adapter is evaluated on an instruction it never saw.
-system_prompt: "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text."
-
+system_prompt: >-
+You are an expert editor of automatic speech recognition output for spoken
+  mathematics. Rewrite the ASR output as a clean English sentence in which every
+  mathematical expression is written as inline LaTeX enclosed in $...$
+  (for example: the integral of $x^2$ from $0$ to $1$). Fix recognition errors
+  and mathematical wording, but do not add or remove content. Match the format
+  of the reference examples exactly. Output only the corrected sentence — no
+  explanation, no markdown, no code fences.
+  
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10

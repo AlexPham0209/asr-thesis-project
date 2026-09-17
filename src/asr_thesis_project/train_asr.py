@@ -264,6 +264,8 @@ def main(cfg: DictConfig):
     train, test = datasets.train, datasets.test
     valid = datasets.get("validation", test)
 
+    train = train.select(range(10))
+
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
 
@@ -337,6 +339,7 @@ def main(cfg: DictConfig):
             study_name=f"{model_name}_optuna_study",
             storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
             n_trials=n_trials,
+            load_if_exists=True
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
