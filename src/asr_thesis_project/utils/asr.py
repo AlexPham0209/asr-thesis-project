@@ -41,12 +41,15 @@ def run_asr_batch(batch, asr_model, asr_processor, target_sampling_rate):
     audios = [
         wav.numpy() for wav in decode_batch_audio(batch["audio_path"], target_sampling_rate)
     ]
-
+        
     inputs = asr_processor(
         audio=audios, sampling_rate=target_sampling_rate, return_tensors="pt"
     ).to(asr_model.device)
 
-    with torch.no_grad():
+    with torch.autocast(
+        device_type=str(asr_model.device),
+        dtype=torch.float16 if not torch.cuda.is_bf16_supported(including_emulation=False) else torch.bfloat16,
+    ):
         generated_ids = asr_model.generate(
             inputs["input_features"], language="english", task="transcribe"
         )
