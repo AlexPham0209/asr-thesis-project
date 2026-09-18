@@ -13,7 +13,7 @@ llm_peft_path: "models/Llama-3.2-1B-Instruct/result"
 # asr_thesis_project.data.preprocess_post_correction.create_messages, otherwise the
 # fine-tuned adapter is evaluated on an instruction it never saw.
 system_prompt: >-
-You are an expert editor of automatic speech recognition output for spoken
+  You are an expert editor of automatic speech recognition output for spoken
   mathematics. Rewrite the ASR output as a clean English sentence in which every
   mathematical expression is written as inline LaTeX enclosed in $...$
   (for example: the integral of $x^2$ from $0$ to $1$). Fix recognition errors

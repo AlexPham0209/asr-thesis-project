@@ -19,7 +19,7 @@ audio_sampling_rate: 16000
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
-max_eval_samples: 100   
+max_eval_samples: null   
 batch_size: 8
 
 # Vector storage

@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -p GPU-shared
+#SBATCH -t 12:00:00
+#SBATCH --gpus=v100-32:1
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
+
+# Builds the audio index (waveform -> Whisper encoder embedding) used by
+# multimodal_rag_inference query_mode=audio. Stores FLACs like the text index.
+# Usage: sbatch audio_rag_db_generate.job [collection_name]
+COLLECTION_NAME=${1:-speech2latex-whisper-audio}
+
+set -x
+
+cd /ocean/projects/cis250209p/apham8/asr-thesis-project || exit 1
+
+module load anaconda3
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate env
+
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+python \
+    -m asr_thesis_project.data.generate_audio_rag_dataset \
+    embedding=whisper \
+    collection_name=$COLLECTION_NAME \
+    num_proc=${SLURM_CPUS_ON_NODE:-4}

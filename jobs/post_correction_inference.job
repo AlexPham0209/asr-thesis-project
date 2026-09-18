@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -p GPU-shared
+#SBATCH -t 06:00:00
+#SBATCH --gpus=v100-32:1
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
+
+# Whisper -> fine-tuned LoRA post-corrector (no retrieval).
+# Usage: sbatch post_correction_inference.job [llm_peft_path] [llm_base_model] [asr_model_id]
+#   base model only (no adapter): sbatch post_correction_inference.job null
+LLM_PEFT_PATH=${1:-models/Llama-3.2-1B-Instruct/result}
+LLM_BASE_MODEL=${2:-meta-llama/Llama-3.2-1B-Instruct}
+ASR_MODEL_ID=${3:-openai/whisper-large-v3}
+
+set -x
+
+cd /ocean/projects/cis250209p/apham8/asr-thesis-project || exit 1
+
+module load anaconda3
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate env
+
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+python \
+    -m asr_thesis_project.post_correction_inference \
+    llm_peft_path=$LLM_PEFT_PATH \
+    llm_base_model=$LLM_BASE_MODEL \
+    asr_model_id=$ASR_MODEL_ID \
+    num_proc=${SLURM_CPUS_ON_NODE:-4}
