@@ -7,6 +7,9 @@ model:
   _target_: transformers.AutoModelForSpeechSeq2Seq.from_pretrained
   _partial_: true
   pretrained_model_name_or_path: "openai/whisper-large-v3"
+  # The large-v3 checkpoint is stored in fp16 and transformers>=5 loads with
+  # dtype="auto"; keep fp32 master weights and let fp16 autocast do mixed precision.
+  dtype: "float32"
   attn_implementation: "sdpa"
 
 processor:
