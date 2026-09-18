@@ -201,7 +201,7 @@ def main(cfg: DictConfig):
 
     # Creating trainer
     trainer = SFTTrainer(
-        model_init=model_init,
+        model=model,
         args=training_args,
         train_dataset=train,
         eval_dataset=test,
@@ -215,6 +215,7 @@ def main(cfg: DictConfig):
     if cfg.get("use_hyperparameter_search", False):
         n_trials = cfg.get("n_trials", 10)
         logger.info(f"Starting Optuna search with {n_trials} trials...")
+        trainer.model_init = model_init
 
         best_run = trainer.hyperparameter_search(
             hp_space=hp_space,
@@ -264,7 +265,7 @@ def main(cfg: DictConfig):
             )    
             
             trainer = SFTTrainer(
-                model_init=model_init,
+                model=model_init(None),
                 args=training_args,
                 train_dataset=train,
                 eval_dataset=test,

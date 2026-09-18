@@ -109,17 +109,9 @@ def main(cfg: DictConfig):
     )
 
     # Keep the raw ASR output: it's the baseline every RAG number is compared against.
-    with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
-        for i in range(len(dataset)):
-            row = dataset[i]
-            record = {
-                "prediction": row["predictions"],
-                "reference": row["references"],
-                "retrieved_ids": row["retrieved_ids"],
-                "retrieved_targets": row["retrieved_targets"],
-                "raw_asr": row["raw_asr_predictions"]
-            }
-            f.write(json.dumps(record) + "\n")
+    with open(os.path.join(results_directory, f"asr_{timestamp}.jsonl"), "w") as f:
+        for raw, ref in zip(dataset["raw_asr_predictions"], dataset["references"]):
+            f.write(json.dumps({"raw_asr": raw, "reference": ref}) + "\n")
 
     del asr_model, asr_processor
     release_cuda()
@@ -149,10 +141,16 @@ def main(cfg: DictConfig):
 
     # Persist predictions before metrics so a metrics crash can't lose the API calls.
     with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
-        for raw, pred, ref in zip(
-            dataset["raw_asr_predictions"], dataset["predictions"], dataset["references"]
-        ):
-            f.write(json.dumps({"raw_asr": raw, "prediction": pred, "reference": ref}) + "\n")
+        for i in range(len(dataset)):
+            row = dataset[i]
+            record = {
+                "prediction": row["predictions"],
+                "reference": row["references"],
+                "retrieved_ids": row["retrieved_ids"],
+                "retrieved_targets": row["retrieved_targets"],
+                "raw_asr": row["raw_asr_predictions"]
+            }
+            f.write(json.dumps(record) + "\n")
 
     # 4. Metrics — RAG output *and* the raw ASR baseline, side by side.
     logger.info("Computing metrics...")

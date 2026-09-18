@@ -66,6 +66,14 @@ class WhisperEmbedding(BaseEmbedding):
         self.model.eval()
 
     def embedding(self, input) -> list:
+        if isinstance(input, torch.Tensor):
+            input = input.detach().cpu().numpy()
+        elif isinstance(input, (list, tuple)):
+            input = [
+                x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
+                for x in input
+            ]
+            
         inputs = self.feature_extractor(
             input,
             sampling_rate=self.sampling_rate,
