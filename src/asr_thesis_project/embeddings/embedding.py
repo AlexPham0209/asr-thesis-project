@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import (
@@ -66,6 +67,16 @@ class WhisperEmbedding(BaseEmbedding):
         self.model.eval()
 
     def embedding(self, input) -> list:
+        # WhisperFeatureExtractor only detects a batch when the elements are
+        # numpy arrays; a list of torch tensors is treated as one ragged clip.
+        if isinstance(input, torch.Tensor):
+            input = input.detach().cpu().numpy()
+        elif isinstance(input, (list, tuple)):
+            input = [
+                x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
+                for x in input
+            ]
+
         if isinstance(input, torch.Tensor):
             input = input.detach().cpu().numpy()
         elif isinstance(input, (list, tuple)):
