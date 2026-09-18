@@ -2,7 +2,7 @@
 _target_: asr_thesis_project.generator.audio_generator.GeminiMultimodalGenerator
 api_key: ${oc.env:GEMINI_API_KEY}
 system_prompt: ${system_prompt}
-model_name: "gemini-2.0-flash"   # TODO: confirm this model id exists for your API key
+model_name: "gemini-3.7-flash"   # gemini-2.0-flash was shut down 2026-06-01; 3.6/2.5-flash also work
 
 # Decode rate of the query clips; declared once at the root as audio_sampling_rate.
 sample_rate: ${audio_sampling_rate}

@@ -8,18 +8,18 @@
 
 # Gemini receives the query audio + retrieved examples (audio + LaTeX).
 # Needs GEMINI_API_KEY in the project .env (read by load_dotenv).
-# Usage: sbatch multimodal_rag_inference.job [query_mode] [embedding] [collection_name] [top_n] [max_eval_samples]
-#   cascade (default): sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 3
-#   no-retrieval:      sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 0 results/multimodal_rag_no_retrievals
-#   audio retrieval:   sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 3 results/multimodal_rag_whisper
-#   audio retrieval (no-retrieval):   sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 0 results/multimodal_rag-whisper_no_retrievals
+# Usage: sbatch multimodal_rag_inference.job [query_mode] [embedding] [collection_name] [top_n] [max_eval_samples] [results_directory]
+#   cascade (default):     sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 3 null results/multimodal_rag
+#   cascade, no retrieval: sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 0 null results/multimodal_rag_no_retrieval
+#   audio retrieval:       sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 3 null results/multimodal_rag_whisper
+#   audio, no retrieval:   sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 0 null results/multimodal_rag_whisper_no_retrieval
 
 QUERY_MODE=${1:-asr_text}
 EMBEDDING=${2:-bge}
 COLLECTION_NAME=${3:-speech2latex-${EMBEDDING}-text}
 TOP_N=${4:-3}
 MAX_EVAL_SAMPLES=${5:-null}
-RESULTS_DIRECTORY=${5-results/multimodal_rag}
+RESULTS_DIRECTORY=${6:-results/multimodal_rag}
 
 set -x
 
@@ -38,5 +38,5 @@ python \
     collection_name=$COLLECTION_NAME \
     top_n=$TOP_N \
     max_eval_samples=$MAX_EVAL_SAMPLES \
-    num_proc=${SLURM_CPUS_ON_NODE:-4} \ 
+    num_proc=${SLURM_CPUS_ON_NODE:-4} \
     results_directory=$RESULTS_DIRECTORY
