@@ -1,5 +1,5 @@
 from builtins import getattr
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 import os
@@ -111,6 +111,11 @@ def main(cfg: DictConfig):
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
+
+    # First PartialState() creates the process group and its kwargs stick
+    # (singleton), so set the collective timeout here: the non-main ranks wait
+    # in a barrier for the whole preprocessing map, which exceeds NCCL's 10 min.
+    accelerate.PartialState(timeout=timedelta(seconds=cfg.get("ddp_timeout", 3 * 3600)))
 
     logger.info(device)
 

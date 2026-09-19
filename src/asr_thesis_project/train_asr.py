@@ -1,5 +1,5 @@
 from builtins import getattr
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 import json
@@ -201,6 +201,7 @@ def main(cfg: DictConfig):
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
+    accelerate.PartialState(timeout=timedelta(seconds=cfg.get("ddp_timeout", 3 * 3600)))
 
     logger.info(device)
 
