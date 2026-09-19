@@ -32,6 +32,7 @@ from asr_thesis_project.utils.hyperparameter import (
     hp_space,
 )
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
+from asr_thesis_project.utils.run_paths import resolve_run_paths
 from asr_thesis_project.utils.logger import CustomLoggingCallback, initialize_loggers
 from asr_thesis_project.utils.metrics import create_llm_metric, preprocess_logits_for_metrics
 
@@ -177,13 +178,8 @@ def main(cfg: DictConfig):
     compute_metrics = create_llm_metric(tokenizer=processor.tokenizer, normalizer=latex_normalizer)
 
     # Training code
-    model_name = cfg.get("model_name", "model")
-    model_directory_name = (
-        f"{model_name}_{timestamp}" if cfg.get("use_timestamp", False) else model_name
-    )
-    model_directory = os.path.join(cfg.model_directory, model_directory_name)
-    studies_directory = os.path.join("studies", model_name)
-    os.makedirs(studies_directory, exist_ok=True)
+    paths = resolve_run_paths(cfg, timestamp)
+    model_directory = paths.model_directory
 
     def build_trainer():
         args = TrainingArguments(
@@ -222,17 +218,17 @@ def main(cfg: DictConfig):
             direction="minimize",
             backend="optuna",
             n_trials=n_trials,
-            study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_directory_name}_optuna_trials.db",
+            study_name=f"{paths.study_name}_optuna_study",
+            storage=paths.study_storage,
             load_if_exists=True,
         )
 
         if trainer.is_world_process_zero() and best_run is not None:
             logger.info(f"------- Best Hyperparameters Found -------\n{best_run}")
             create_hyperparameter_diagrams(
-                name=model_directory_name,
+                name=paths.study_name,
                 model_directory=model_directory,
-                studies_directory=studies_directory,
+                studies_directory=paths.studies_directory,
             )
 
         if torch.distributed.is_initialized():
@@ -282,7 +278,7 @@ def main(cfg: DictConfig):
         for k, v in test_metrics.items():
             logger.info(f"test/{k}: {v}")
 
-        results_directory = os.path.join(cfg.get("results_directory", "results"), model_directory_name)
+        results_directory = os.path.join(cfg.get("results_directory", "results"), paths.run_name)
         os.makedirs(results_directory, exist_ok=True)
         with open(os.path.join(results_directory, "test_results.json"), "w") as f:
             json.dump({"n_samples": len(references), **test_metrics}, f, indent=4)

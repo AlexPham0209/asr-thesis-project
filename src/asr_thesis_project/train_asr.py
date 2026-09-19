@@ -37,6 +37,7 @@ import numpy as np
 from hydra.utils import instantiate
 from datasets import load_dataset
 from asr_thesis_project.data.normalizer import create_latex_normalizer
+from asr_thesis_project.utils.run_paths import resolve_run_paths
 from asr_thesis_project.utils.logger import CustomLoggingCallback, initialize_loggers
 from asr_thesis_project.utils.metrics import create_metric
 
@@ -288,16 +289,8 @@ def main(cfg: DictConfig):
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
 
     # Model name and directory
-    model_name = cfg.get("model_name", "model")
-    model_name_timestamp = f"{model_name}_{timestamp}"
-    model_directory_name = (
-        model_name_timestamp if cfg.get("use_timestamp", False) else model_name
-    )
-    model_directory = os.path.join(cfg.model_directory, model_directory_name)
-
-    # Studies storage folder
-    studies_directory = os.path.join("studies", model_name)
-    os.makedirs(studies_directory, exist_ok=True)
+    paths = resolve_run_paths(cfg, timestamp)
+    model_directory = paths.model_directory
 
     # Creating trainer
     trainer = (
@@ -338,8 +331,8 @@ def main(cfg: DictConfig):
             compute_objective=compute_objective,
             direction="minimize",
             backend="optuna",
-            study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_directory_name}_optuna_trials.db",
+            study_name=f"{paths.study_name}_optuna_study",
+            storage=paths.study_storage,
             n_trials=n_trials,
             load_if_exists=True
         )
@@ -348,9 +341,9 @@ def main(cfg: DictConfig):
             logger.info("------- Best Hyperparameters Found -------")
             logger.info(best_run)
             create_hyperparameter_diagrams(
-                name=model_directory_name,
+                name=paths.study_name,
                 model_directory=model_directory,
-                studies_directory=studies_directory,
+                studies_directory=paths.studies_directory,
             )
 
         # Synchronize to ensure Rank 0 is done drawing diagrams

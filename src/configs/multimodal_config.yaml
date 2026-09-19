@@ -15,9 +15,9 @@ results_directory: results
 
 # Data
 num_proc: 10
-validation_fraction: 0.05   # carved out of sentences_train; test split is never used for selection
+validation_fraction: 0.05   
 seed: 42
-max_eval_samples: null      # int to cap validation and test sizes for smoke tests
+max_eval_samples: null      
 normalize_during_preprocessing: false
 
 # Training
@@ -26,6 +26,9 @@ use_hyperparameter_search: false
 n_trials: 5
 early_stopping_patience: 5
 use_timestamp: false
+run_name: null        
+study_name: null      
+studies_directory: studies
 resume_from_checkpoint: false
 
 # Final generation-based evaluation on the test split

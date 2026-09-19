@@ -22,5 +22,8 @@ use_lora: true
 use_hyperparameter_search: true
 n_trials: 2
 use_timestamp: false
+run_name: null        
+study_name: null      
+studies_directory: studies
 
 resume_from_checkpoint: false
