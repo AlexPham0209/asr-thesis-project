@@ -104,10 +104,6 @@ def evaluate(
 def main(cfg: DictConfig):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     initialize_loggers(cfg=cfg, timestamp=timestamp)
-
-    # First PartialState() creates the process group and its kwargs stick
-    # (singleton), so set the collective timeout here: the non-main ranks wait
-    # in a barrier for the whole preprocessing map, which exceeds NCCL's 10 min.
     accelerate.PartialState(timeout=timedelta(seconds=cfg.get("ddp_timeout", 3 * 3600)))
 
     logger.info(f"Using device: {device}")
@@ -145,7 +141,6 @@ def main(cfg: DictConfig):
     normalizer = hydra.utils.instantiate(cfg.normalizer) if cfg.get("normalizer") else None
     latex_normalizer = create_latex_normalizer(normalizer=normalizer)
 
-    # ---------------------------------------------------------------- data
     datasets = hydra.utils.instantiate(cfg.dataset)
     train, test = datasets.train, datasets.test
 
@@ -196,8 +191,6 @@ def main(cfg: DictConfig):
             output_dir=model_directory,
             bf16=bf16_available(),
             fp16=torch.cuda.is_available() and not bf16_available(),
-            # The collator consumes audio/full_text/prompt_length, none of which
-            # are model.forward arguments; Trainer would otherwise drop them.
             remove_unused_columns=False,
             label_names=["labels"],
         )
@@ -220,7 +213,6 @@ def main(cfg: DictConfig):
 
     trainer = build_trainer()
 
-    # ------------------------------------------------- hyperparameter search
     if cfg.get("use_hyperparameter_search", False):
         n_trials = cfg.get("n_trials", 10)
         logger.info(f"Starting Optuna search with {n_trials} trials...")
@@ -252,9 +244,8 @@ def main(cfg: DictConfig):
         if best_run is not None:
             for k, v in best_run.hyperparameters.items():
                 OmegaConf.update(cfg.training, k, v, merge=True)
-            trainer = build_trainer()  # rebuilds TrainingArguments from the updated cfg
+            trainer = build_trainer()  
 
-    # -------------------------------------------------------------- train
     train_results = trainer.train(
         resume_from_checkpoint=cfg.get("resume_from_checkpoint", False)
     )
@@ -271,7 +262,7 @@ def main(cfg: DictConfig):
     trainer.save_metrics("eval", valid_metrics)
 
     saved_directory = os.path.join(model_directory, "result")
-    trainer.save_model(saved_directory)  # adapter (or full weights) + processor
+    trainer.save_model(saved_directory) 
 
     if trainer.is_world_process_zero():
         logger.info("Running generation-based evaluation on the test split...")

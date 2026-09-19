@@ -20,3 +20,12 @@ use_hyperparameter_search: true
 n_trials: 2
 
 resume_from_checkpoint: false
+
+# Instruction the adapter is trained on; saved to <result>/system_prompt.txt.
+system_prompt: >-
+  You are an expert editor of automatic speech recognition output for spoken
+  mathematics. Rewrite the ASR output as a clean English sentence in which every
+  mathematical expression is written as inline LaTeX enclosed in $...$
+  (for example: the integral of $x^2$ from $0$ to $1$). Fix recognition errors
+  and mathematical wording, but do not add or remove content. Output only the
+  corrected sentence — no explanation, no markdown, no code fences.

@@ -9,24 +9,22 @@ llm_base_model: "meta-llama/Llama-3.2-1B-Instruct"
 # A non-existent path raises; set null to evaluate the base model.
 llm_peft_path: "models/Llama-3.2-1B-Instruct/result"
 
-# Must be identical to the training prompt in
-# asr_thesis_project.data.preprocess_post_correction.create_messages, otherwise the
-# fine-tuned adapter is evaluated on an instruction it never saw.
-system_prompt: >-
-  You are an expert editor of automatic speech recognition output for spoken
-  mathematics. Rewrite the ASR output as a clean English sentence in which every
-  mathematical expression is written as inline LaTeX enclosed in $...$
-  (for example: the integral of $x^2$ from $0$ to $1$). Fix recognition errors
-  and mathematical wording, but do not add or remove content. Match the format
-  of the reference examples exactly. Output only the corrected sentence — no
-  explanation, no markdown, no code fences.
-  
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
 
 max_eval_samples: null   # full split, like the other evaluation configs
 batch_size: 8
+
+# Used only when evaluating the base model. With an adapter, the prompt saved
+# next to it (system_prompt.txt) takes precedence so train/eval can't drift.
+system_prompt: >-
+  You are an expert editor of automatic speech recognition output for spoken
+  mathematics. Rewrite the ASR output as a clean English sentence in which every
+  mathematical expression is written as inline LaTeX enclosed in $...$
+  (for example: the integral of $x^2$ from $0$ to $1$). Fix recognition errors
+  and mathematical wording, but do not add or remove content. Output only the
+  corrected sentence — no explanation, no markdown, no code fences.
 
 # Results & Output Settings
 results_directory: "results/post_correction"

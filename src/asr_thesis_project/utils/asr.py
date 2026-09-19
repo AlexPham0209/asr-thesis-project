@@ -27,6 +27,10 @@ def load_whisper(model_id: str):
         model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id, device_map="auto")
         processor_id = model_id
 
+    if os.path.isdir(model_id):
+        model.generation_config.suppress_tokens = None
+        model.generation_config.forced_decoder_ids = None
+
     processor = AutoProcessor.from_pretrained(processor_id)
     return model, processor, processor.feature_extractor.sampling_rate
 

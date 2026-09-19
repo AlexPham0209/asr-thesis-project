@@ -7,6 +7,8 @@ import os
 import accelerate
 from dotenv import load_dotenv
 
+from asr_thesis_project.data.preprocess_post_correction import DEFAULT_PROMPT, SYSTEM_PROMPT_FILE
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
@@ -137,8 +139,8 @@ def main(cfg: DictConfig):
 
     # Model init
     def model_init(trial):
-        model = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
-        return model
+        base = hydra.utils.instantiate(cfg.model, token=HF_TOKEN)
+        return base
 
     model = model_init(None)
     tokenizer = hydra.utils.instantiate(cfg.tokenizer)
@@ -158,12 +160,13 @@ def main(cfg: DictConfig):
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
-
+    system_prompt = cfg.get("system_prompt", DEFAULT_PROMPT)
     normalize_during_preprocessing = cfg.get("normalize_during_preprocessing", False)
     preprocess_fn = hydra.utils.instantiate(
         cfg.preprocess,
         tokenizer=tokenizer,
         normalizer=normalizer if normalize_during_preprocessing else None,
+        system_prompt=system_prompt
     )
     
     with accelerate.PartialState().main_process_first():
@@ -199,8 +202,8 @@ def main(cfg: DictConfig):
         dataset_text_field="messages",
         assistant_only_loss=True,
         loss_type="nll",
-        bf16=torch.cuda.is_bf16_supported(),
-        fp16=not torch.cuda.is_bf16_supported(),
+        bf16=torch.cuda.is_bf16_supported(including_emulation=False),
+        fp16=not torch.cuda.is_bf16_supported(including_emulation=False),
         output_dir=model_directory,
     )
 
@@ -220,7 +223,12 @@ def main(cfg: DictConfig):
     if cfg.get("use_hyperparameter_search", False):
         n_trials = cfg.get("n_trials", 10)
         logger.info(f"Starting Optuna search with {n_trials} trials...")
-        trainer.model_init = model_init
+
+        def hp_model_init(trial):
+            base = model_init(trial)
+            return get_peft_model(base, lora_config) if lora_config else base
+
+        trainer.model_init = hp_model_init
 
         best_run = trainer.hyperparameter_search(
             hp_space=hp_space,
@@ -247,7 +255,6 @@ def main(cfg: DictConfig):
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
 
-            # FIX: Broadcast the best_run object from Rank 0 to all other ranks
             best_run_list = [best_run] if trainer.is_world_process_zero() else [None]
             torch.distributed.broadcast_object_list(best_run_list, src=0)
             best_run = best_run_list[0]
@@ -264,8 +271,8 @@ def main(cfg: DictConfig):
                 dataset_text_field="messages",
                 assistant_only_loss=True,
                 loss_type="nll",
-                bf16=torch.cuda.is_bf16_supported(),
-                fp16=not torch.cuda.is_bf16_supported(),
+                bf16=torch.cuda.is_bf16_supported(including_emulation=False),
+                fp16=not torch.cuda.is_bf16_supported(including_emulation=False),
                 output_dir=model_directory,
             )    
             
@@ -306,6 +313,11 @@ def main(cfg: DictConfig):
     saved_directory = os.path.join(model_directory, "result")
     os.makedirs(saved_directory, exist_ok=True)
     trainer.save_model(saved_directory)
+    
+    # Saving system prompt
+    if trainer.is_world_process_zero():
+        with open(os.path.join(saved_directory, SYSTEM_PROMPT_FILE), "w") as f:
+            f.write(system_prompt)
 
 
 if __name__ == "__main__":

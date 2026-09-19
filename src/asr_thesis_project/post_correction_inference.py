@@ -23,6 +23,11 @@ from transformers import (
 from peft import PeftModel
 
 from asr_thesis_project.data.filters import combined_filter
+from asr_thesis_project.data.preprocess_post_correction import (
+    DEFAULT_PROMPT,
+    SYSTEM_PROMPT_FILE,
+    create_messages,
+)
 from asr_thesis_project.utils.asr import load_whisper, run_asr_batch
 from asr_thesis_project.utils.logger import initialize_loggers
 from asr_thesis_project.utils.latex_metrics import LatexInContextMetrics
@@ -40,10 +45,7 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     """Stage 2: Raw ASR Predictions -> LaTeX Corrected Output"""
     transcriptions = batch["raw_asr_predictions"]
 
-    messages_batch = [
-        [{"role": "system", "content": system_prompt}, {"role": "user", "content": t}]
-        for t in transcriptions
-    ]
+    messages_batch = [create_messages(text=t, system_prompt=system_prompt) for t in transcriptions]
 
     prompts = [
         llm_tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
@@ -60,8 +62,7 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
             max_new_tokens=512,
             pad_token_id=llm_tokenizer.pad_token_id,
             eos_token_id=llm_tokenizer.eos_token_id,
-            temperature=0.2,
-            do_sample=True,
+            do_sample=False,
         )
 
     prompt_length = llm_inputs.input_ids.shape[-1]
@@ -119,8 +120,7 @@ def main(cfg: DictConfig):
         asr_fn, batched=True, batch_size=batch_size, remove_columns=dataset.column_names
     )
 
-    logger.info(dataset["raw_asr_predictions"])
-    logger.info(dataset["references"])
+    logger.info(f"ASR done on {len(dataset)} samples; e.g. {dataset[0]['raw_asr_predictions']!r}")
 
     # Free ASR memory before loading LLM
     del asr_model
@@ -131,11 +131,6 @@ def main(cfg: DictConfig):
     # 3. Stage 2: LLM Post-Correction
     llm_base_model = cfg.get("llm_base_model", "meta-llama/Llama-3-8b-Instruct")
     llm_peft_path = cfg.get("llm_peft_path", None)
-    system_prompt = cfg.get(
-        "system_prompt",
-        "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
-    )
-
     logger.info(f"Loading LLM model: {llm_base_model}")
     llm_tokenizer = AutoTokenizer.from_pretrained(
         llm_peft_path 
@@ -148,7 +143,7 @@ def main(cfg: DictConfig):
 
     llm_model = AutoModelForCausalLM.from_pretrained(
         llm_base_model,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         device_map="auto",
     )
 
@@ -161,30 +156,63 @@ def main(cfg: DictConfig):
     llm_model.eval()
 
     logger.info("Executing Stage 2: LLM Post-Correction...")
+    system_prompt = cfg.get("system_prompt", DEFAULT_PROMPT)
+    saved_prompt_path = os.path.join(llm_peft_path, SYSTEM_PROMPT_FILE) if llm_peft_path else None
+    if saved_prompt_path and os.path.exists(saved_prompt_path):
+        with open(saved_prompt_path) as f:
+            saved_prompt = f.read()
+        if saved_prompt.strip() != system_prompt.strip():
+            logger.warning(
+                "Config system_prompt differs from the one the adapter was trained on; "
+                f"using the trained prompt from {saved_prompt_path}."
+            )
+        system_prompt = saved_prompt
+    elif llm_peft_path:
+        logger.warning(
+            f"No {SYSTEM_PROMPT_FILE} next to the adapter; assuming it was trained with the "
+            "config/default prompt. Adapters trained before this file existed used DEFAULT_PROMPT."
+        )
     llm_fn = functools.partial(
         run_llm_batch,
         llm_model=llm_model,
         llm_tokenizer=llm_tokenizer,
-        system_prompt=system_prompt,
+        system_prompt=system_prompt
     )
 
     dataset = dataset.map(llm_fn, batched=True, batch_size=batch_size)
 
-    # 4. Compute Metrics
-    logger.info("Computing Metrics...")
-    metrics = LatexInContextMetrics()
-    results = metrics.compute_all(
-        predictions=dataset["predictions"], references=dataset["references"]
-    )
-
-    logger.info("------- Final Evaluation Results -------")
-    for metric_name, value in results.items():
-        logger.info(f"{metric_name}: {value}")
-
-    # Saving metrics
     results_directory = cfg.get("results_directory", "results")
     os.makedirs(results_directory, exist_ok=True)
-    with open(os.path.join(results_directory, "results.json"), "w") as f:
+
+    # Persist predictions before metrics so they can be inspected / re-scored.
+    with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
+        for raw, pred, ref in zip(
+            dataset["raw_asr_predictions"], dataset["predictions"], dataset["references"]
+        ):
+            f.write(json.dumps({"raw_asr": raw, "prediction": pred, "reference": ref}) + "\n")
+
+    # 4. Compute Metrics — corrected output and the raw ASR baseline side by side.
+    logger.info("Computing Metrics...")
+    metrics = LatexInContextMetrics()
+    results = {
+        "asr_model_id": asr_model_id,
+        "llm_base_model": llm_base_model,
+        "llm_peft_path": llm_peft_path,
+        "n_samples": len(dataset),
+        "post_correction": metrics.compute_all(
+            predictions=dataset["predictions"], references=dataset["references"]
+        ),
+        "raw_asr": metrics.compute_all(
+            predictions=dataset["raw_asr_predictions"], references=dataset["references"]
+        ),
+    }
+
+    logger.info("------- Final Evaluation Results -------")
+    for stage in ("raw_asr", "post_correction"):
+        for metric_name, value in results[stage].items():
+            logger.info(f"{stage}/{metric_name}: {value}")
+
+    with open(os.path.join(results_directory, f"results_{timestamp}.json"), "w") as f:
         json.dump(results, f, indent=4)
 
 

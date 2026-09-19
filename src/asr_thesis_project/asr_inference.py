@@ -73,21 +73,30 @@ def main(cfg: DictConfig):
         asr_fn, batched=True, batch_size=batch_size, remove_columns=dataset.column_names
     )
 
+    results_directory = cfg.get("results_directory", "results")
+    os.makedirs(results_directory, exist_ok=True)
+
+    # Persist predictions before metrics so they can be inspected / re-scored.
+    with open(os.path.join(results_directory, f"predictions_{timestamp}.jsonl"), "w") as f:
+        for pred, ref in zip(dataset["raw_asr_predictions"], dataset["references"]):
+            f.write(json.dumps({"prediction": pred, "reference": ref}) + "\n")
+
     # 4. Compute Metrics
     logger.info("Computing Metrics...")
     metrics = LatexInContextMetrics()
-    results = metrics.compute_all(
-        predictions=dataset["raw_asr_predictions"], references=dataset["references"]
-    )
+    results = {
+        "asr_model_id": asr_model_id,
+        "n_samples": len(dataset),
+        "asr": metrics.compute_all(
+            predictions=dataset["raw_asr_predictions"], references=dataset["references"]
+        ),
+    }
 
     logger.info("------- Final Evaluation Results -------")
-    for metric_name, value in results.items():
+    for metric_name, value in results["asr"].items():
         logger.info(f"{metric_name}: {value}")
 
-    # Saving metrics
-    results_directory = cfg.get("results_directory", "results")
-    os.makedirs(results_directory, exist_ok=True)
-    with open(os.path.join(results_directory, "results.json"), "w") as f:
+    with open(os.path.join(results_directory, f"results_{timestamp}.json"), "w") as f:
         json.dump(results, f, indent=4)
 
 

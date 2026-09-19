@@ -3,12 +3,15 @@ from transformers import AutoTokenizer
 
 from asr_thesis_project.data.filters import combined_filter
 
+DEFAULT_PROMPT = "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text."
+SYSTEM_PROMPT_FILE = "system_prompt.txt"
 
-def create_messages(text, label=None):
+
+def create_messages(text, label=None, system_prompt=DEFAULT_PROMPT):
     messages = [
         {
             "role": "system",
-            "content": "You are an expert transcription editor. Correct the following ASR output for grammatical errors, mathematical formatting, and LaTeX terminology. Output ONLY the corrected text.",
+            "content": system_prompt,
         },
         {
             "role": "user",
@@ -22,7 +25,7 @@ def create_messages(text, label=None):
     return messages
 
 
-def preprocess_speech2latex(dataset, tokenizer, normalizer):
+def preprocess_speech2latex(dataset, tokenizer, normalizer, system_prompt=DEFAULT_PROMPT):
     dataset = dataset.filter(combined_filter, num_proc=10)
 
     def preprocess(batch):
@@ -33,8 +36,8 @@ def preprocess_speech2latex(dataset, tokenizer, normalizer):
             text = normalizer(text)
             label = normalizer(label)
 
-        messages = create_messages(text=text)
-        full_messages = create_messages(text=text, label=label)
+        messages = create_messages(text=text, system_prompt=system_prompt)
+        full_messages = create_messages(text=text, label=label, system_prompt=system_prompt)
 
         batch["messages"] = full_messages
         batch["text"] = tokenizer.apply_chat_template(full_messages, tokenize=False)

@@ -230,9 +230,13 @@ def main(cfg: DictConfig):
         )
 
         if hasattr(model, "config"):
-            model.config.forced_decoder_ids = None
-            model.config.suppress_tokens = []
             model.config.use_cache = False
+        if hasattr(model, "generation_config"):
+            gen = model.generation_config
+            gen.suppress_tokens = None
+            gen.forced_decoder_ids = None
+            gen.language = "english"
+            gen.task = "transcribe"
 
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
@@ -267,7 +271,6 @@ def main(cfg: DictConfig):
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
-
     normalize_during_preprocessing = cfg.get("normalize_during_preprocessing", False)
     preprocess_fn = hydra.utils.instantiate(
         cfg.preprocess,
@@ -278,8 +281,8 @@ def main(cfg: DictConfig):
 
     with accelerate.PartialState().main_process_first():
         train = preprocess_fn(train)
-        valid = preprocess_fn(valid)
         test = preprocess_fn(test)
+        valid = preprocess_fn(valid) if "validation" in datasets else test
 
     # Creating metrics
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
