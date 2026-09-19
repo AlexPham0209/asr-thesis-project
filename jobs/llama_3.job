@@ -28,7 +28,5 @@ accelerate launch \
     training=sft \
     lora=llama \
     use_lora=true \
-    use_hyperparameter_search=true \
-    n_trials=2 \
     dataset=speech2latex_llm \
     training.max_steps=5000 

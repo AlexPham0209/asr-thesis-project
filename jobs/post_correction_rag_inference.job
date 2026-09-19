@@ -9,11 +9,12 @@
 # Whisper -> text retrieval -> Gemini post-correction.
 # Needs GEMINI_API_KEY in the project .env (read by load_dotenv).
 # Usage: sbatch post_correction_rag_inference.job [embedding] [collection_name] [top_n] [max_eval_samples]
-#   no-retrieval baseline: sbatch post_correction_rag_inference.job bge speech2latex-bge-text 0
+#   no-retrieval baseline: sbatch post_correction_rag_inference.job bge speech2latex-bge-text 0 results/post_correction_rag_no_retrieval
 EMBEDDING=${1:-bge}
 COLLECTION_NAME=${2:-speech2latex-${EMBEDDING}-text}
 TOP_N=${3:-3}
 MAX_EVAL_SAMPLES=${4:-null}
+RESULTS_DIRECTORY=${5-results/post_correction_rag}
 
 set -x
 
@@ -31,4 +32,5 @@ python \
     collection_name=$COLLECTION_NAME \
     top_n=$TOP_N \
     max_eval_samples=$MAX_EVAL_SAMPLES \
-    num_proc=${SLURM_CPUS_ON_NODE:-4}
+    num_proc=${SLURM_CPUS_ON_NODE:-4} \
+    results_directory=$RESULTS_DIRECTORY
