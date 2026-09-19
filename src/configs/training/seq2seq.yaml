@@ -9,9 +9,6 @@ training:
   warmup_steps: 50
   gradient_checkpointing: True
   fp16: True
-  # Not fp16_full_eval: it casts the weights to half in place, but Seq2SeqTrainer
-  # runs generate() outside autocast and Whisper's encoder does not cast the
-  # fp32 input_features -> 'Input type (float) and bias type (c10::Half)'.
   fp16_full_eval: False
 
   per_device_eval_batch_size: 8

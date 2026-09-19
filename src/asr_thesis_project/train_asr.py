@@ -233,11 +233,6 @@ def main(cfg: DictConfig):
             model.config.forced_decoder_ids = None
             model.config.suppress_tokens = []
             model.config.use_cache = False
-        if hasattr(model, "generation_config"):
-            # Fix the prompt so eval generate() skips per-batch language detection.
-            model.generation_config.language = "english"
-            model.generation_config.task = "transcribe"
-            model.generation_config.forced_decoder_ids = None
 
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
@@ -269,8 +264,6 @@ def main(cfg: DictConfig):
     datasets = hydra.utils.instantiate(cfg.dataset)
     train, test = datasets.train, datasets.test
     valid = datasets.get("validation", test)
-
-    train = train.select(range(10))
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}

@@ -11,7 +11,7 @@ logging_directory: "logs_inference"
 dataset_name: "marsianin500/Speech2Latex"
 dataset_split: "sentences_test"
 num_proc: 10
-max_eval_samples: 100   # int to cap, null for the full split
+max_eval_samples: null   # int to cap, null for the full split
 batch_size: 8
 
 # Stage 1: ASR
