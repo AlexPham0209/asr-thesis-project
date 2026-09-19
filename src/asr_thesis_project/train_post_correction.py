@@ -237,7 +237,7 @@ def main(cfg: DictConfig):
             backend="optuna",
             n_trials=n_trials,
             study_name=f"{model_name}_optuna_study",
-            storage=f"sqlite:///{studies_directory}/{model_name}_optuna_trials.db",
+            storage=f"sqlite:///{studies_directory}/{model_directory_name}_optuna_trials.db",
             load_if_exists=True,
         )
 
@@ -246,7 +246,7 @@ def main(cfg: DictConfig):
             logger.info(best_run)
 
             create_hyperparameter_diagrams(
-                name=model_name,
+                name=model_directory_name,
                 model_directory=model_directory,
                 studies_directory=studies_directory,
             )
