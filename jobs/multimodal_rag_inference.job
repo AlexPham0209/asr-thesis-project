@@ -3,23 +3,37 @@
 #SBATCH -p GPU-shared
 #SBATCH -t 12:00:00
 #SBATCH --gpus=v100-32:1
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --output=logs/slurm-%j.out
+#SBATCH --error=logs/slurm-%j.err
 
 # Gemini receives the query audio + retrieved examples (audio + LaTeX).
 # Needs GEMINI_API_KEY in the project .env (read by load_dotenv).
-# Usage: sbatch multimodal_rag_inference.job [query_mode] [embedding] [collection_name] [top_n] [max_eval_samples] [results_directory]
-#   cascade (default):     sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 3 null results/multimodal_rag
-#   cascade, no retrieval: sbatch multimodal_rag_inference.job asr_text bge speech2latex-bge-text 0 null results/multimodal_rag_no_retrieval
-#   audio retrieval:       sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 3 null results/multimodal_rag_whisper
-#   audio, no retrieval:   sbatch multimodal_rag_inference.job audio whisper speech2latex-whisper-audio 0 null results/multimodal_rag_whisper_no_retrieval
+# Usage: sbatch multimodal_rag_inference.job [query_mode=...] [embedding=...] [collection_name=...] [top_n=...] [max_eval_samples=...] [results_directory=...]
+#   cascade (default):     sbatch multimodal_rag_inference.job query_mode=asr_text embedding=bge collection_name=speech2latex-bge-text top_n=3 results_directory=results/multimodal_rag
+#   cascade, no retrieval: sbatch multimodal_rag_inference.job query_mode=asr_text embedding=bge collection_name=speech2latex-bge-text top_n=0 results_directory=results/multimodal_rag_no_retrieval
+#   audio retrieval:       sbatch multimodal_rag_inference.job query_mode=audio embedding=whisper collection_name=speech2latex-whisper-audio top_n=3 results_directory=results/multimodal_rag_whisper
+#   audio, no retrieval:   sbatch multimodal_rag_inference.job query_mode=audio embedding=whisper collection_name=speech2latex-whisper-audio top_n=0 results_directory=results/multimodal_rag_whisper_no_retrieval
 
-QUERY_MODE=${1:-asr_text}
-EMBEDDING=${2:-bge}
-COLLECTION_NAME=${3:-speech2latex-${EMBEDDING}-text}
-TOP_N=${4:-3}
-MAX_EVAL_SAMPLES=${5:-null}
-RESULTS_DIRECTORY=${6:-results/multimodal_rag}
+QUERY_MODE=asr_text
+EMBEDDING=bge
+COLLECTION_NAME=""
+TOP_N=3
+MAX_EVAL_SAMPLES=null
+RESULTS_DIRECTORY=results/multimodal_rag
+
+for arg in "$@"; do
+    case $arg in
+        query_mode=*) QUERY_MODE="${arg#*=}" ;;
+        embedding=*) EMBEDDING="${arg#*=}" ;;
+        collection_name=*) COLLECTION_NAME="${arg#*=}" ;;
+        top_n=*) TOP_N="${arg#*=}" ;;
+        max_eval_samples=*) MAX_EVAL_SAMPLES="${arg#*=}" ;;
+        results_directory=*) RESULTS_DIRECTORY="${arg#*=}" ;;
+        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+done
+
+COLLECTION_NAME=${COLLECTION_NAME:-speech2latex-${EMBEDDING}-text}
 
 set -x
 

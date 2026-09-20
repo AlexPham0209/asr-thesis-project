@@ -3,16 +3,27 @@
 #SBATCH -p GPU-shared
 #SBATCH -t 12:00:00
 #SBATCH --gpus=v100-32:1
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --output=logs/slurm-%j.out
+#SBATCH --error=logs/slurm-%j.err
 
 # Builds the text index (whisper_text -> sentence embedding) and stores one FLAC
 # per indexed row under vector_db/audio/<collection>/ for the multimodal cascade.
-# Usage: sbatch text_rag_db_generate.job [embedding] [collection_name] [store_audio]
-#   e.g. sbatch text_rag_db_generate.job e5 speech2latex-e5-text true
-EMBEDDING=${1:-bge}
-COLLECTION_NAME=${2:-speech2latex-${EMBEDDING}-text}
-STORE_AUDIO=${3:-true}
+# Usage: sbatch text_rag_db_generate.job [embedding=...] [collection_name=...] [store_audio=...]
+#   e.g. sbatch text_rag_db_generate.job embedding=e5 collection_name=speech2latex-e5-text store_audio=true
+EMBEDDING=bge
+COLLECTION_NAME=""
+STORE_AUDIO=true
+
+for arg in "$@"; do
+    case $arg in
+        embedding=*) EMBEDDING="${arg#*=}" ;;
+        collection_name=*) COLLECTION_NAME="${arg#*=}" ;;
+        store_audio=*) STORE_AUDIO="${arg#*=}" ;;
+        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+done
+
+COLLECTION_NAME=${COLLECTION_NAME:-speech2latex-${EMBEDDING}-text}
 
 set -x
 

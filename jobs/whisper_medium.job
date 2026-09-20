@@ -3,8 +3,20 @@
 #SBATCH -p GPU
 #SBATCH -t 24:00:00
 #SBATCH --gpus=v100-32:8
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --output=logs/slurm-%j.out
+#SBATCH --error=logs/slurm-%j.err
+
+# Usage: sbatch whisper_medium.job [run_name=...] [study_name=...]
+RUN_NAME=null
+STUDY_NAME=null
+
+for arg in "$@"; do
+    case $arg in
+        run_name=*) RUN_NAME="${arg#*=}" ;;
+        study_name=*) STUDY_NAME="${arg#*=}" ;;
+        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+done
 
 # Echo commands to stdout for tracking
 set -x
@@ -31,4 +43,6 @@ accelerate launch \
     use_hyperparameter_search=true \
     n_trials=2 \
     dataset=speech2latex \
-    training.max_steps=5000 
+    training.max_steps=5000 \
+    run_name=$RUN_NAME \
+    study_name=$STUDY_NAME
