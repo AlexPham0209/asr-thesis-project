@@ -1,0 +1,16 @@
+# @package _global_
+architecture: ctc
+
+model_name: "wav2vec2-base-960h"
+
+model:
+  _target_: transformers.AutoModelForCTC.from_pretrained
+  _partial_: true
+  pretrained_model_name_or_path: "facebook/wav2vec2-base-960h"
+  ctc_loss_reduction: "mean"
+  ignore_mismatched_sizes: true
+  ctc_zero_infinity: true
+
+processor:
+  _target_: asr_thesis_project.utils.processor.create_wav2vec2_processor
+  vocab_path: "data/processed/speech2latex/vocab.json"

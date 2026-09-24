@@ -48,7 +48,9 @@ def run_llm_batch(batch, llm_model, llm_tokenizer, system_prompt):
     messages_batch = [create_messages(text=t, system_prompt=system_prompt) for t in transcriptions]
 
     prompts = [
-        llm_tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+        llm_tokenizer.apply_chat_template(
+            m, tokenize=False, add_generation_prompt=True, enable_thinking=False
+        )
         for m in messages_batch
     ]
 
