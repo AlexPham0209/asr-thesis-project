@@ -14,11 +14,11 @@ def create_metric(processor, normalizer=None):
         if isinstance(pred_ids, tuple):
             pred_ids = pred_ids[0]
 
-        if isinstance(pred_ids, torch.Tensor) and pred_ids.ndim == 3:
-            pred_ids = pred_ids.argmax(dim=-1)
-
         if not isinstance(pred_ids, torch.Tensor):
             pred_ids = torch.from_numpy(pred_ids)
+
+        if pred_ids.ndim == 3:
+            pred_ids = pred_ids.argmax(dim=-1)
 
         pred.label_ids[pred.label_ids == -100] = processor.tokenizer.pad_token_id
 

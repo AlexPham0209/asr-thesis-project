@@ -240,6 +240,15 @@ def main(cfg: DictConfig):
             gen.task = "transcribe"
 
         if cfg.get("use_lora", False) and cfg.get("lora_config"):
+            try:
+                model.get_input_embeddings()
+            except NotImplementedError:
+                base_model = getattr(model, model.base_model_prefix, model)
+                feature_projection = getattr(base_model, "feature_projection", None)
+                if feature_projection is not None:
+                    model.get_input_embeddings = lambda: feature_projection.projection
+                    model.set_input_embeddings = lambda value: None
+
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
             config = LoraConfig(**lora_config)
             model = get_peft_model(model, config)

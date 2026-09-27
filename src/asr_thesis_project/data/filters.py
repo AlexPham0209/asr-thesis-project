@@ -12,7 +12,6 @@ def combined_filter(sample):
 
     return True
 
-
 def dedupe_by_sentence_id(dataset, prefer_human: bool = True):
     sentence_ids = dataset["sentence_id"]
     is_tts = dataset["is_tts"] if prefer_human else [0] * len(sentence_ids)
