@@ -298,7 +298,7 @@ def main(cfg: DictConfig):
         device_type=device,
         dtype=torch.float16 if not torch.cuda.is_bf16_supported(including_emulation=False) else torch.bfloat16,
     ):
-        valid_metrics = trainer.evaluate()
+        valid_metrics = trainer.evaluate(eval_dataset=test)
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
 

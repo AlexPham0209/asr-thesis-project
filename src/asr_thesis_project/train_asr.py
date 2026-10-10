@@ -86,9 +86,9 @@ def create_seq2seq_trainer(
         processing_class=processor,
         callbacks=[
             CustomLoggingCallback(logger),
-            EarlyStoppingCallback(
-                early_stopping_patience=5, early_stopping_threshold=0.0
-            ),
+            # EarlyStoppingCallback(
+            #     early_stopping_patience=5, early_stopping_threshold=0.0
+            # ),
         ],
     )
 
@@ -248,7 +248,7 @@ def main(cfg: DictConfig):
                 if feature_projection is not None:
                     model.get_input_embeddings = lambda: feature_projection.projection
                     model.set_input_embeddings = lambda value: None
-
+                    
             lora_config = OmegaConf.to_container(cfg.lora_config, resolve=True)
             config = LoraConfig(**lora_config)
             model = get_peft_model(model, config)
@@ -292,7 +292,7 @@ def main(cfg: DictConfig):
     with accelerate.PartialState().main_process_first():
         train = preprocess_fn(train)
         test = preprocess_fn(test)
-        valid = preprocess_fn(valid) if "validation" in datasets else test
+        valid = preprocess_fn(valid) if "validation" in datasets else None
 
     # Creating metrics
     compute_metrics = create_metric(processor=processor, normalizer=latex_normalizer)
@@ -416,7 +416,7 @@ def main(cfg: DictConfig):
         device_type=device,
         dtype=torch.float16 if not torch.cuda.is_bf16_supported(including_emulation=False) else torch.bfloat16,
     ):
-        valid_metrics = trainer.evaluate()
+        valid_metrics = trainer.evaluate(eval_dataset=test)
 
     trainer.log_metrics("eval", valid_metrics)
     trainer.save_metrics("eval", valid_metrics)
