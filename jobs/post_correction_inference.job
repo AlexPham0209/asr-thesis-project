@@ -18,6 +18,7 @@ for arg in "$@"; do
         llm_peft_path=*) LLM_PEFT_PATH="${arg#*=}" ;;
         llm_base_model=*) LLM_BASE_MODEL="${arg#*=}" ;;
         asr_model_id=*) ASR_MODEL_ID="${arg#*=}" ;;
+        results_directory=*) RESULTS_DIRECTORY="${arg#*=}" ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done

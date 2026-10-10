@@ -12,11 +12,13 @@
 #   fine-tuned run: sbatch asr_inference.job asr_model_id=models/whisper-small/result
 ASR_MODEL_ID=openai/whisper-small
 MAX_EVAL_SAMPLES=null
+RESULTS_DIRECTORY=null
 
 for arg in "$@"; do
     case $arg in
         asr_model_id=*) ASR_MODEL_ID="${arg#*=}" ;;
         max_eval_samples=*) MAX_EVAL_SAMPLES="${arg#*=}" ;;
+        results_directory=*) RESULTS_DIRECTORY="${arg#*=}" ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
@@ -35,4 +37,5 @@ python \
     -m asr_thesis_project.asr_inference \
     asr_model_id=$ASR_MODEL_ID \
     max_eval_samples=$MAX_EVAL_SAMPLES \
+    results_directory=$RESULTS_DIRECTORY \
     num_proc=${SLURM_CPUS_ON_NODE:-4}
