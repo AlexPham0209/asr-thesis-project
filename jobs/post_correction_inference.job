@@ -12,6 +12,7 @@
 LLM_PEFT_PATH=models/Llama-3.2-1B-Instruct/result
 LLM_BASE_MODEL=meta-llama/Llama-3.2-1B-Instruct
 ASR_MODEL_ID=openai/whisper-large-v3
+RESULTS_DIRECTORY=null
 
 for arg in "$@"; do
     case $arg in
@@ -38,4 +39,5 @@ python \
     llm_peft_path=$LLM_PEFT_PATH \
     llm_base_model=$LLM_BASE_MODEL \
     asr_model_id=$ASR_MODEL_ID \
+    results_directory=$RESULTS_DIRECTORY \
     num_proc=${SLURM_CPUS_ON_NODE:-4}
