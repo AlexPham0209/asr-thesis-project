@@ -15,10 +15,10 @@ training:
   predict_with_generate: True
   generation_max_length: 300
   
-  eval_strategy: "steps"
+  eval_strategy: "no"
   eval_steps: 500
   
-  save_strategy: "steps"
+  save_strategy: "best"
   save_steps: 500
 
   logging_strategy: "steps"

@@ -157,7 +157,7 @@ def main(cfg: DictConfig):
     # Loading in dataset
     datasets = hydra.utils.instantiate(cfg.dataset)
     train, test = datasets.train, datasets.test
-    valid = datasets.get("validation", test)
+    valid = datasets.get("validation", None)
 
     # Instantiating preprocessing function an then preprocessing the raw dataset
     # Each sample should be in the following format: {input_features/input_values, labels, input_lengths}
@@ -173,6 +173,7 @@ def main(cfg: DictConfig):
     with accelerate.PartialState().main_process_first():
         train = preprocess_fn(train)
         test = preprocess_fn(test)
+        valid = preprocess_fn(valid) if "validation" in datasets else None 
 
     lora_config = (
         LoraConfig(**OmegaConf.to_container(cfg.lora_config, resolve=True))
@@ -205,7 +206,7 @@ def main(cfg: DictConfig):
         model=model,
         args=training_args,
         train_dataset=train,
-        eval_dataset=test,
+        eval_dataset=valid,
         peft_config=lora_config,
         compute_metrics=compute_metrics,
         processing_class=tokenizer,

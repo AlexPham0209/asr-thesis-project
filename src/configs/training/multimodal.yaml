@@ -15,9 +15,9 @@ training:
   per_device_eval_batch_size: 1
   eval_accumulation_steps: 8
 
-  eval_strategy: "steps"
+  eval_strategy: "no"
   eval_steps: 250
-  save_strategy: "steps"
+  save_strategy: "best"
   save_steps: 250
   save_total_limit: 3
   logging_strategy: "steps"
